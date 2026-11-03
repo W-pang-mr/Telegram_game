@@ -1,0 +1,16 @@
+{
+  "name": "Hood",
+  "short_name": "Hood",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#05030f",
+  "theme_color": "#05030f",
+  "description": "Empire Battle - Hood Game",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
