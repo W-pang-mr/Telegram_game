@@ -1,9 +1,14 @@
 {
   "name": "empire-battle-telegram",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Telegram mini game + admin-controlled coming soon / off switch",
+  "description": "Telegram mini game + admin switch + TON wallet",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=18" }
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@ton/core": ">=0.60.0 <1.0.0",
+    "@ton/crypto": "^3.3.0",
+    "@ton/ton": "^15.3.0"
+  }
 }
