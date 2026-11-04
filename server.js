@@ -27,7 +27,7 @@ const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).fi
 const MODES = ['on', 'soon', 'off'];
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'status.json');
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = ['public', 'Public'].map(n => path.join(__dirname, n)).find(d => fs.existsSync(d)) || path.join(__dirname, 'public');
 // فایل‌های کنار server.js که اجازه‌ی سرو شدن دارند (فقط همین دو تا، نه کل پوشه)
 const ROOT_FILES = new Set(['/index.html', '/icon-180.png']);
 const MAX_AGE = 24 * 60 * 60;
@@ -210,12 +210,9 @@ http.createServer(async (req, res) => {
     if (req.method === 'GET' || req.method === 'HEAD') {
       let rel = decodeURIComponent(url.pathname);
       if (rel.endsWith('/')) rel += 'index.html';
-      let file;
-      if (ROOT_FILES.has(rel)) file = path.join(__dirname, rel);
-      else {
-        file = path.normalize(path.join(PUBLIC_DIR, rel));
-        if (!file.startsWith(PUBLIC_DIR + path.sep)) { res.writeHead(403); return res.end(); }
-      }
+      let file = path.normalize(path.join(PUBLIC_DIR, rel));
+      if (!file.startsWith(PUBLIC_DIR + path.sep)) { res.writeHead(403); return res.end(); }
+      if (!fs.existsSync(file) && ROOT_FILES.has(rel)) file = path.join(__dirname, rel);   // اگر در public نبود، از ریشه
       return fs.readFile(file, (err, buf) => {
         if (err) { res.writeHead(404); return res.end('Not found'); }
         const ext = path.extname(file).toLowerCase();
