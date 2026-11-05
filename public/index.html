@@ -728,6 +728,16 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
 #wsh .wh{display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid rgba(125,180,255,.15);font-size:11.5px;font-weight:700;color:#cfe3ff}
 #wsh .wh b{direction:ltr;color:#fff}
 #wsh .wh span{margin-right:auto}
+/* رفرال و گردونه */
+#wsh .rs{display:flex;gap:8px;margin:10px 0 4px}
+#wsh .rs div{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid rgba(125,180,255,.25);font-size:11px;font-weight:800;color:#9fc2f5}
+#wsh .rs b{font-size:18px;color:#fff}
+#wsh .rw{position:relative;width:230px;height:230px;margin:14px auto 6px}
+#wsh .rw #rWheel{width:100%;height:100%;border-radius:50%;box-shadow:0 0 0 4px #1d4ed8,0 0 22px rgba(56,189,248,.45);transition:transform 4.6s cubic-bezier(.12,.7,.1,1)}
+#wsh .rw svg{width:100%;height:100%;display:block}
+#wsh .rp{position:absolute;left:50%;top:-10px;transform:translateX(-50%);width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-top:22px solid #fde047;filter:drop-shadow(0 2px 2px rgba(0,0,0,.6));z-index:2}
+#wal .wb.rf{position:relative;padding:0 9px;font-size:16px}
+#wal .wb.rf i{display:none;position:absolute;top:-5px;right:-4px;min-width:17px;height:17px;border-radius:9px;background:#ef4444;color:#fff;font-size:10px;line-height:17px;text-align:center;font-style:normal;font-weight:900}
 </style>
 </head>
 <body>
@@ -807,6 +817,7 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
       <button class="btn wb" id="wConn">🔗 اتصال</button>
       <button class="btn wb" id="wDep">واریز</button>
       <button class="btn wb" id="wWd">برداشت</button>
+      <button class="btn wb rf" id="wRef" aria-label="دعوت دوستان">🎡<i id="wRefN"></i></button>
     </div>
     <div id="mbody">
       <section id="tHome" class="tab on ent">
@@ -860,7 +871,7 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
 <div id="wsh">
   <div class="ap">
     <div class="ah"><span>💎 کیف پول TON</span><button class="ax" id="wX">✕</button></div>
-    <div class="wtabs"><button data-p="dep" class="on">واریز</button><button data-p="wd">برداشت</button></div>
+    <div class="wtabs"><button data-p="dep" class="on">واریز</button><button data-p="wd">برداشت</button><button data-p="ref">🎡 دعوت</button></div>
     <div class="wpan on" id="pDep">
       <div class="wl">موجودی شما: <b id="dBal">0</b> TON</div>
       <div class="wk">آدرس واریز</div>
@@ -882,6 +893,16 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
       <div class="wn" id="wNote"></div>
       <div class="wk">آخرین برداشت‌ها</div>
       <div id="wHist"></div>
+    </div>
+    <div class="wpan" id="pRef">
+      <div class="wl">با هر دوستی که با لینک تو وارد بازی بشه <b>۱ گردونه</b> می‌گیری 🎡<br>احتمال برد ۱ از ۱۰ · جایزه: <b><span id="rPr">0.012</span> TON</b></div>
+      <div class="wk">لینک دعوت تو</div>
+      <div class="wcp"><code id="rLink">—</code><button class="wcb" data-c="rLink">کپی</button></div>
+      <button class="wgo" id="rShare">📤 ارسال لینک به دوستان</button>
+      <div class="rs"><div>🎡 گردونه‌های تو<b id="rSp">0</b></div><div>👥 دعوت‌شده‌ها<b id="rInv">0</b></div></div>
+      <div class="rw"><div id="rWheel"></div><i class="rp"></i></div>
+      <button class="wgo" id="rGo">🎡 بچرخون</button>
+      <div class="wn" id="rNote"></div>
     </div>
   </div>
 </div>
@@ -3038,7 +3059,7 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
 
  /* ---------- ولت TON ---------- */
  var WAL=null,tc=null;
- var ERR={disabled:'برداشت فعلاً غیرفعاله',amount:'مقدار نامعتبره',min:'مقدار کمتر از حداقل برداشته',address:'آدرس مقصد نامعتبره',pending:'یک برداشت در حال انجامه، کمی صبر کن',insufficient:'موجودی کافی نیست',auth:'فقط داخل تلگرام کار می‌کنه',error:'خطایی پیش اومد؛ دوباره امتحان کن'};
+ var ERR={disabled:'برداشت فعلاً غیرفعاله',amount:'مقدار نامعتبره',min:'مقدار کمتر از حداقل برداشته',address:'آدرس مقصد نامعتبره',pending:'یک برداشت در حال انجامه، کمی صبر کن',insufficient:'موجودی کافی نیست',nospin:'گردونه‌ای نداری؛ دوستات رو دعوت کن',auth:'فقط داخل تلگرام کار می‌کنه',error:'خطایی پیش اومد؛ دوباره امتحان کن'};
  var STAT={pending:'⏳ در صف',sending:'⏳ در حال ارسال',sent:'✅ ارسال شد',failed:'↩️ ناموفق (برگشت خورد)',review:'🔎 در حال بررسی'};
  function digits(s){return String(s).replace(/[۰-۹]/g,function(d){return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)}).replace(/[٠-٩]/g,function(d){return '٠١٢٣٤٥٦٧٨٩'.indexOf(d)}).replace(/[٫،,]/g,'.')}
  function toNano(s){s=digits(s).trim();if(!/^\d{1,6}(\.\d{1,9})?$/.test(s))return null;var p=s.split('.');return Number(p[0])*1e9+Number(((p[1]||'')+'000000000').slice(0,9))}
@@ -3096,6 +3117,7 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
   var h='';
   for(var i=0;i<WAL.history.length;i++){var x=WAL.history[i];h+='<div class="wh"><b>'+fmtTon(x.amount)+' TON</b><span>'+(STAT[x.status]||x.status)+'</span></div>'}
   $('wHist').innerHTML=h||'<div class="wh"><span>هنوز برداشتی نداشتی</span></div>';
+  renderRef();
  }
  function calcNet(){
   var n=toNano($('wAmt').value);
@@ -3103,7 +3125,7 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
  }
  function loadMe(){
   if(!initData)return Promise.resolve();
-  return api('/api/wallet/me',{initData:initData}).then(function(d){WAL=d.enabled?d:null;renderWal();if(WAL)ensureTC()}).catch(function(){});
+  return api('/api/wallet/me',{initData:initData}).then(function(d){if(spinning)return;WAL=d.enabled?d:null;renderWal();if(WAL)ensureTC()}).catch(function(){});
  }
  var pollT=null;
  function pollMe(n){clearInterval(pollT);var k=0;pollT=setInterval(function(){loadMe();if(++k>=n)clearInterval(pollT)},5000)}
@@ -3115,12 +3137,13 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
  function setTab(p){
   var t=document.querySelectorAll('#wsh .wtabs button');
   for(var i=0;i<t.length;i++)t[i].classList.toggle('on',t[i].getAttribute('data-p')===p);
-  $('pDep').classList.toggle('on',p==='dep');$('pWd').classList.toggle('on',p==='wd');
+  $('pDep').classList.toggle('on',p==='dep');$('pWd').classList.toggle('on',p==='wd');$('pRef').classList.toggle('on',p==='ref');
  }
  var tabs=document.querySelectorAll('#wsh .wtabs button');
  for(var k=0;k<tabs.length;k++)tabs[k].onclick=function(){setTab(this.getAttribute('data-p'))};
  $('wDep').onclick=function(){openSheet('dep')};
  $('wWd').onclick=function(){openSheet('wd')};
+ $('wRef').onclick=function(){openSheet('ref')};
  $('wX').onclick=function(){$('wsh').classList.remove('show')};
  $('wsh').onclick=function(e){if(e.target===this)this.classList.remove('show')};
  $('wConn').onclick=toggleConnect;
@@ -3161,6 +3184,49 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
   api('/api/wallet/withdraw',{initData:initData,amount:rawTon(n),to:a.address}).then(function(d){
    WAL=d;renderWal();$('wAmt').value='';calcNet();wnote('درخواست ثبت شد ✓ چند لحظه تا ارسال');pollMe(12)
   }).catch(function(e){wnote(ERR[e.code]||ERR.error,1)}).then(function(){b.classList.remove('busy')});
+ };
+
+ /* ---------- رفرال و گردونه ---------- */
+ var spinning=false,rot=0,wheelBuilt=false;
+ function rnote(t,err){var n=$('rNote');n.textContent=t;n.className='wn'+(err?' err':'')}
+ function buildWheel(){
+  var R=96,h='<svg viewBox="-100 -100 200 200">';
+  for(var i=0;i<10;i++){
+   var a0=i*36*Math.PI/180,a1=(i+1)*36*Math.PI/180;
+   var x0=R*Math.sin(a0),y0=-R*Math.cos(a0),x1=R*Math.sin(a1),y1=-R*Math.cos(a1);
+   var fill=i===0?'#fbbf24':(i%2?'#1e3a8a':'#2563eb');
+   h+='<path d="M0 0L'+x0.toFixed(2)+' '+y0.toFixed(2)+'A'+R+' '+R+' 0 0 1 '+x1.toFixed(2)+' '+y1.toFixed(2)+'Z" fill="'+fill+'" stroke="#e0efff" stroke-width="1.5"/>';
+   h+='<text transform="rotate('+(i*36+18)+') translate(0,-66)" text-anchor="middle" font-size="'+(i===0?11:10)+'" font-weight="900" fill="'+(i===0?'#3b2300':'#fff')+'">'+(i===0?fmtTon(WAL.prize):'پوچ')+'</text>';
+  }
+  h+='<circle r="13" fill="#0b1f4d" stroke="#e0efff" stroke-width="2"/></svg>';
+  $('rWheel').innerHTML=h;wheelBuilt=true;
+ }
+ function renderRef(){
+  if(!wheelBuilt)buildWheel();
+  $('rLink').textContent=WAL.refLink||'لینک هنوز تنظیم نشده (TWA_RETURN_URL)';
+  $('rSp').textContent=WAL.spins||0;$('rInv').textContent=WAL.invited||0;$('rPr').textContent=fmtTon(WAL.prize);
+  var n=$('wRefN');n.textContent=WAL.spins||'';n.style.display=WAL.spins?'block':'none';
+  $('rGo').disabled=spinning||!(WAL.spins>0);
+  $('rShare').disabled=!WAL.refLink;
+ }
+ $('rGo').onclick=function(){
+  if(!WAL||spinning||!(WAL.spins>0))return;
+  spinning=true;$('rGo').disabled=true;rnote('');
+  api('/api/wallet/spin',{initData:initData}).then(function(d){
+   var s=d.spin,center=s.slot*36+18,jit=(Math.random()-.5)*20;
+   var base=rot-(rot%360);rot=base+360*6+(360-center)+jit;
+   $('rWheel').style.transform='rotate('+rot+'deg)';
+   setTimeout(function(){
+    WAL=d;spinning=false;renderWal();
+    rnote(s.win?'🎉 تبریک! '+fmtTon(s.amount)+' TON برنده شدی':'😅 این بار پوچ شد؛ دفعه‌ی بعد!',0);
+   },4800);
+  }).catch(function(e){spinning=false;renderRef();rnote(ERR[e.code]||ERR.error,1)});
+ };
+ $('rShare').onclick=function(){
+  if(!WAL||!WAL.refLink)return;
+  var u='https://t.me/share/url?url='+encodeURIComponent(WAL.refLink)+'&text='+encodeURIComponent('🎮 بیا تو بازی نبرد امپراتوری‌ها! با این لینک وارد شو:');
+  try{if(tg&&tg.openTelegramLink){tg.openTelegramLink(u);return}}catch(e){}
+  window.open(u,'_blank');
  };
 
  /* ---------- شروع ---------- */
