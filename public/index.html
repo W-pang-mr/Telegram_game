@@ -736,6 +736,9 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
 #wsh .rw #rWheel{width:100%;height:100%;border-radius:50%;box-shadow:0 0 0 4px #1d4ed8,0 0 22px rgba(56,189,248,.45);transition:transform 4.6s cubic-bezier(.12,.7,.1,1)}
 #wsh .rw svg{width:100%;height:100%;display:block}
 #wsh .rp{position:absolute;left:50%;top:-10px;transform:translateX(-50%);width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-top:22px solid #fde047;filter:drop-shadow(0 2px 2px rgba(0,0,0,.6));z-index:2}
+#wsh .wtabs button{font-size:11.5px;padding:0 2px}
+#wsh .cv{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid rgba(125,180,255,.25);font-size:12px;font-weight:800;color:#cfe3ff;margin-bottom:8px}
+#wsh .cv b{color:#fff;font-size:15px;direction:ltr}
 #wal .wb.rf{position:relative;padding:0 9px;font-size:16px}
 #wal .wb.rf i{display:none;position:absolute;top:-5px;right:-4px;min-width:17px;height:17px;border-radius:9px;background:#ef4444;color:#fff;font-size:10px;line-height:17px;text-align:center;font-style:normal;font-weight:900}
 </style>
@@ -871,7 +874,7 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
 <div id="wsh">
   <div class="ap">
     <div class="ah"><span>💎 کیف پول TON</span><button class="ax" id="wX">✕</button></div>
-    <div class="wtabs"><button data-p="dep" class="on">واریز</button><button data-p="wd">برداشت</button><button data-p="ref">🎡 دعوت</button></div>
+    <div class="wtabs"><button data-p="dep" class="on">واریز</button><button data-p="wd">برداشت</button><button data-p="ref">🎡 دعوت</button><button data-p="conv">🪙 تبدیل</button></div>
     <div class="wpan on" id="pDep">
       <div class="wl">موجودی شما: <b id="dBal">0</b> TON</div>
       <div class="wk">آدرس واریز</div>
@@ -903,6 +906,15 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
       <div class="rw"><div id="rWheel"></div><i class="rp"></i></div>
       <button class="wgo" id="rGo">🎡 بچرخون</button>
       <div class="wn" id="rNote"></div>
+    </div>
+    <div class="wpan" id="pConv">
+      <div class="cv"><span>🪙 سکه‌های تو</span><b id="cCoins">0</b></div>
+      <div class="cv"><span>نرخ تبدیل</span><b id="cRate">—</b></div>
+      <div class="cv"><span>سقف تبدیل باقی‌مانده‌ی امروز</span><b><span id="cLeft">0</span> 🪙</b></div>
+      <div class="wrow"><input id="cAmt" inputmode="numeric" placeholder="تعداد سکه" autocomplete="off"><button class="wmax" id="cMax">حداکثر</button></div>
+      <p class="wwarn" style="color:#cfe3ff;font-weight:800">دریافتی شما: <b id="cOut">0</b> TON (به موجودی کیف پول اضافه می‌شه)</p>
+      <button class="wgo" id="cGo">🪙 تبدیل به TON</button>
+      <div class="wn" id="cNote"></div>
     </div>
   </div>
 </div>
@@ -3059,7 +3071,7 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
 
  /* ---------- ولت TON ---------- */
  var WAL=null,tc=null;
- var ERR={disabled:'برداشت فعلاً غیرفعاله',amount:'مقدار نامعتبره',min:'مقدار کمتر از حداقل برداشته',address:'آدرس مقصد نامعتبره',pending:'یک برداشت در حال انجامه، کمی صبر کن',insufficient:'موجودی کافی نیست',nospin:'گردونه‌ای نداری؛ دوستات رو دعوت کن',auth:'فقط داخل تلگرام کار می‌کنه',error:'خطایی پیش اومد؛ دوباره امتحان کن'};
+ var ERR={disabled:'برداشت فعلاً غیرفعاله',amount:'مقدار نامعتبره',min:'مقدار کمتر از حداقل برداشته',address:'آدرس مقصد نامعتبره',pending:'یک برداشت در حال انجامه، کمی صبر کن',insufficient:'موجودی کافی نیست',nospin:'گردونه‌ای نداری؛ دوستات رو دعوت کن',convmin:'مقدار کمتر از حداقل تبدیله',convlimit:'سقف تبدیل امروزت پر شده؛ فردا دوباره امتحان کن',convglobal:'سقف تبدیل امروز پر شده؛ فردا دوباره امتحان کن',auth:'فقط داخل تلگرام کار می‌کنه',error:'خطایی پیش اومد؛ دوباره امتحان کن'};
  var STAT={pending:'⏳ در صف',sending:'⏳ در حال ارسال',sent:'✅ ارسال شد',failed:'↩️ ناموفق (برگشت خورد)',review:'🔎 در حال بررسی'};
  function digits(s){return String(s).replace(/[۰-۹]/g,function(d){return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)}).replace(/[٠-٩]/g,function(d){return '٠١٢٣٤٥٦٧٨٩'.indexOf(d)}).replace(/[٫،,]/g,'.')}
  function toNano(s){s=digits(s).trim();if(!/^\d{1,6}(\.\d{1,9})?$/.test(s))return null;var p=s.split('.');return Number(p[0])*1e9+Number(((p[1]||'')+'000000000').slice(0,9))}
@@ -3117,7 +3129,7 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
   var h='';
   for(var i=0;i<WAL.history.length;i++){var x=WAL.history[i];h+='<div class="wh"><b>'+fmtTon(x.amount)+' TON</b><span>'+(STAT[x.status]||x.status)+'</span></div>'}
   $('wHist').innerHTML=h||'<div class="wh"><span>هنوز برداشتی نداشتی</span></div>';
-  renderRef();
+  renderRef();renderConv();
  }
  function calcNet(){
   var n=toNano($('wAmt').value);
@@ -3137,13 +3149,15 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
  function setTab(p){
   var t=document.querySelectorAll('#wsh .wtabs button');
   for(var i=0;i<t.length;i++)t[i].classList.toggle('on',t[i].getAttribute('data-p')===p);
-  $('pDep').classList.toggle('on',p==='dep');$('pWd').classList.toggle('on',p==='wd');$('pRef').classList.toggle('on',p==='ref');
+  $('pDep').classList.toggle('on',p==='dep');$('pWd').classList.toggle('on',p==='wd');$('pRef').classList.toggle('on',p==='ref');$('pConv').classList.toggle('on',p==='conv');
  }
  var tabs=document.querySelectorAll('#wsh .wtabs button');
  for(var k=0;k<tabs.length;k++)tabs[k].onclick=function(){setTab(this.getAttribute('data-p'))};
  $('wDep').onclick=function(){openSheet('dep')};
  $('wWd').onclick=function(){openSheet('wd')};
  $('wRef').onclick=function(){openSheet('ref')};
+ var coinBox=document.getElementById('coins');
+ if(coinBox)coinBox.addEventListener('click',function(){if(WAL)openSheet('conv')});
  $('wX').onclick=function(){$('wsh').classList.remove('show')};
  $('wsh').onclick=function(e){if(e.target===this)this.classList.remove('show')};
  $('wConn').onclick=toggleConnect;
@@ -3227,6 +3241,43 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
   var u='https://t.me/share/url?url='+encodeURIComponent(WAL.refLink)+'&text='+encodeURIComponent('🎮 بیا تو بازی نبرد امپراتوری‌ها! با این لینک وارد شو:');
   try{if(tg&&tg.openTelegramLink){tg.openTelegramLink(u);return}}catch(e){}
   window.open(u,'_blank');
+ };
+
+ /* ---------- تبدیل سکه به TON ---------- */
+ function coinsNow(){try{return (typeof S!=='undefined'&&S)?(S.coins|0):0}catch(e){return 0}}
+ function cnote(t,err){var n=$('cNote');n.textContent=t;n.className='wn'+(err?' err':'')}
+ function convMax(){var c=WAL.conv,m=Math.min(coinsNow(),c.left);return m-(m%c.unit)}
+ function convCalc(){
+  var c=WAL&&WAL.conv,n=parseInt(digits($('cAmt').value),10);
+  $('cOut').textContent=(c&&n>0&&n%c.unit===0)?fmtTon(n/c.unit*c.unitNano):'0.00';
+ }
+ function renderConv(){
+  if(!WAL||!WAL.conv)return;
+  var c=WAL.conv;
+  $('cCoins').textContent=coinsNow();
+  $('cRate').textContent=c.unit+' سکه = '+fmtTon(c.unitNano)+' TON';
+  $('cLeft').textContent=c.left;
+  convCalc();
+ }
+ $('cAmt').oninput=convCalc;
+ $('cMax').onclick=function(){if(WAL&&WAL.conv){$('cAmt').value=convMax()||'';convCalc()}};
+ $('cGo').onclick=function(){
+  if(!WAL||!WAL.conv)return;
+  var c=WAL.conv,n=parseInt(digits($('cAmt').value),10);
+  if(!(n>0)){cnote('تعداد سکه رو وارد کن',1);return}
+  if(n<c.unit){cnote('حداقل تبدیل '+c.unit+' سکه هست',1);return}
+  if(n%c.unit!==0){cnote('تعداد سکه باید مضربی از '+c.unit+' باشه',1);return}
+  if(n>coinsNow()){cnote('سکه‌ی کافی نداری',1);return}
+  if(n>c.left){cnote(c.left>0?'سقف امروزت فقط '+c.left+' سکه‌ی دیگه‌ست':ERR.convlimit,1);return}
+  var b=this;b.classList.add('busy');cnote('در حال تبدیل…');
+  S.coins-=n;save();updateCoins();renderConv();       // اول از سکه‌ها کم می‌شه
+  api('/api/wallet/convert',{initData:initData,coins:n}).then(function(d){
+   WAL=d;renderWal();$('cAmt').value='';convCalc();
+   cnote('✅ '+n+' سکه تبدیل شد به '+fmtTon(d.converted.nano)+' TON')
+  }).catch(function(e){
+   S.coins+=n;save();updateCoins();renderConv();       // اگه سرور قبول نکرد برمی‌گرده
+   cnote(ERR[e.code]||ERR.error,1)
+  }).then(function(){b.classList.remove('busy')});
  };
 
  /* ---------- شروع ---------- */
