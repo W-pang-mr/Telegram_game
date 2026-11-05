@@ -12,7 +12,10 @@
     WITHDRAW_FEE       کارمزد کلی برداشت (پیش‌فرض 0.0007)، از مبلغ برداشت کم می‌شه
     TONCENTER_API_KEY  کلید رایگان toncenter (پیشنهادی؛ بدون اون نرخ درخواست کمه)
     TWA_RETURN_URL     لینک برگشت به تلگرام بعد از تأیید در ولت، مثل https://t.me/نام_ربات/نام_اپ (لینک رفرال هم از همین ساخته می‌شه)
-    REF_PRIZE          جایزه‌ی گردونه‌ی رفرال به TON (پیش‌فرض 0.012)
+    REF_REWARD         پاداش هر رفرال به TON، مستقیم به موجودی (پیش‌فرض 0.005)
+    REF_MAX            حداکثر تعداد رفرال هر نفر (پیش‌فرض 100)
+    WHEEL_PRIZES       خانه‌های گردونه‌ی روزانه، با کاما، 0 = پوچ (پیش‌فرض 0,0.0001,0,0.002,0,0.008,0.01)
+    BONUS_GLOBAL_TON   سقف روزانه‌ی کل پاداش‌ها (رفرال + گردونه) به TON (پیش‌فرض 0.5)
     COIN_UNIT / COIN_UNIT_TON   نرخ تبدیل: هر COIN_UNIT سکه = COIN_UNIT_TON تون (پیش‌فرض 1000 سکه = 0.001)
     CONVERT_DAILY_COINS         سقف تبدیل روزانه‌ی هر کاربر، به سکه (پیش‌فرض 20000؛ 0 = تبدیل خاموش)
     CONVERT_GLOBAL_TON          سقف تبدیل روزانه‌ی کل کاربران، به TON (پیش‌فرض 1)
@@ -72,7 +75,13 @@ const TC_KEY = process.env.TONCENTER_API_KEY || '';
 const DEPOSIT_ADDRESS = process.env.DEPOSIT_ADDRESS || 'UQB26xkOJbJyP5oqhW1fYjZvfb-H4UhgNllpRj7lMqJwW_Bt';
 const MIN_WD = parseNano(process.env.MIN_WITHDRAW || '0.01');
 const FEE_WD = parseNano(process.env.WITHDRAW_FEE || '0.0007');
-const REF_PRIZE = parseNano(process.env.REF_PRIZE || '0.012');   // جایزه‌ی گردونه‌ی رفرال
+const REWARDS = {                                                  // پاداش‌ها
+  ref: parseNano(process.env.REF_REWARD || '0.005'),               // پاداش هر رفرال (مستقیم به موجودی)
+  wheel: (process.env.WHEEL_PRIZES || '0,0.0001,0,0.002,0,0.008,0.01').split(',').map(x => x.trim() === '0' ? 0 : parseNano(x)),   // خانه‌های گردونه‌ی روزانه
+  refMax: Number(process.env.REF_MAX) || 100,                      // حداکثر رفرال هر نفر
+  global: parseNano(process.env.BONUS_GLOBAL_TON || '0.5')         // سقف روزانه‌ی کل پاداش‌ها (رفرال + گردونه)
+};
+if (REWARDS.wheel.some(x => x === null) || REWARDS.wheel.length < 2) { console.warn('WHEEL_PRIZES invalid → default'); REWARDS.wheel = [0, 100000, 0, 2000000, 0, 8000000, 10000000]; }
 const CONV = {                                                     // تبدیل سکه به TON
   unit: Number(process.env.COIN_UNIT) || 1000,                     // هر چند سکه...
   unitNano: parseNano(process.env.COIN_UNIT_TON || '0.001'),       // ...چند TON
@@ -156,7 +165,7 @@ async function setupSender() {
 
 let wallet = null;
 if (walletAllowed && DEPOSIT_ADDRESS) {
-  wallet = createWallet({ dir: DATA_DIR, address: DEPOSIT_ADDRESS, min: MIN_WD, fee: FEE_WD, prize: REF_PRIZE, conv: CONV, sender, fetchTxs, normalizeAddress });
+  wallet = createWallet({ dir: DATA_DIR, address: DEPOSIT_ADDRESS, min: MIN_WD, fee: FEE_WD, rewards: REWARDS, conv: CONV, sender, fetchTxs, normalizeAddress });
   let scanning = false;
   const tick = async () => { if (scanning) return; scanning = true; try { await wallet.scan(); } catch (e) { console.error('scan:', e.message); } scanning = false; };
   setupSender().then(() => { setTimeout(tick, 2000); setInterval(tick, 15000); });

@@ -24,11 +24,13 @@ function createWallet(o) {
   const file = path.join(o.dir, 'wallet.json');
   const min = o.min, fee = o.fee;
   const sender = o.sender;               // { ready, send(to, nano) }
-  const prize = o.prize || 12000000;     // جایزه‌ی گردونه (نانوتون)
+  // پاداش‌ها (نانوتون): رفرال، خانه‌های گردونه‌ی روزانه، سقف تعداد رفرال هر نفر، سقف روزانه‌ی کل پاداش‌ها
+  const rewards = Object.assign({ ref: 5000000, wheel: [0, 100000, 0, 2000000, 0, 8000000, 10000000], refMax: 100, global: 5e8 }, o.rewards);
   const conv = Object.assign({ unit: 1000, unitNano: 1000000, daily: 20000, global: 1e9 }, o.conv);   // تبدیل سکه به TON
   let S = { v: 1, users: {}, seen: [], wd: [], unmatched: [], nid: 1 };
   try { S = Object.assign(S, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) { /* اولین اجرا */ }
-  S.ref = Object.assign({ by: {}, spins: {}, inv: {} }, S.ref);   // رفرال: by[دعوت‌شده]=دعوت‌کننده
+  S.ref = Object.assign({ by: {}, inv: {}, earned: {} }, S.ref);  // رفرال: by[دعوت‌شده]=دعوت‌کننده
+  S.bonus = Object.assign({ day: '', g: 0, wheel: {} }, S.bonus); // بودجه‌ی روزانه‌ی پاداش‌ها و گردونه‌ی امروز
   S.conv = Object.assign({ day: '', users: {}, g: 0 }, S.conv);     // سقف روزانه‌ی تبدیل سکه
   const seen = new Set(S.seen);
   // درخواست‌هایی که وسط ارسال قطع شدن: تکلیفشون معلوم نیست → بررسی دستی
@@ -53,7 +55,8 @@ function createWallet(o) {
       enabled: true, balance: u.bal, address: o.address, memo: memoOf(uid),
       min: Math.round(min), fee: Math.round(fee), canWithdraw: !!sender.ready,
       conv: convInfo(uid),
-      spins: S.ref.spins[String(uid)] || 0, invited: S.ref.inv[String(uid)] || 0, prize: Math.round(prize),
+      invited: S.ref.inv[String(uid)] || 0, earned: S.ref.earned[String(uid)] || 0, refReward: Math.round(rewards.ref),
+      wheel: wheelInfo(uid),
       history: S.wd.filter(w => w.uid === String(uid)).slice(-6).reverse()
         .map(w => ({ id: w.id, amount: w.amount, fee: w.fee, net: w.net, to: w.to, status: w.status, t: w.t }))
     };
@@ -121,35 +124,51 @@ function createWallet(o) {
     return item;
   }
 
-  /* ---- رفرال و گردونه ---- */
+  /* ---- پاداش‌ها: رفرال (مستقیم) + گردونه‌ی روزانه ---- */
+  const dayKey = () => new Date().toISOString().slice(0, 10);
+  function bonusState() {                               // بودجه‌ی روزانه‌ی کل پاداش‌ها
+    const d = dayKey();
+    if (S.bonus.day !== d) { S.bonus.day = d; S.bonus.g = 0; S.bonus.wheel = {}; }
+    return S.bonus;
+  }
   // فقط برای کاربر کاملاً جدید (که قبلاً هیچ رکوردی نداشته) و فقط یک‌بار به‌ازای هر کاربر
   function refer(invited, referrer) {
     invited = String(invited); referrer = String(referrer);
     if (!/^\d{1,15}$/.test(referrer) || invited === referrer) return false;
     if (S.users[invited] || S.ref.by[invited]) return false;
     if (!S.users[referrer]) return false;
+    if ((S.ref.inv[referrer] || 0) >= rewards.refMax) return false;      // سقف تعداد رفرال هر نفر
+    const b = bonusState();
+    if (b.g + rewards.ref > rewards.global) return false;                // بودجه‌ی امروز تموم شده
     S.ref.by[invited] = referrer;
-    S.ref.spins[referrer] = (S.ref.spins[referrer] || 0) + 1;
     S.ref.inv[referrer] = (S.ref.inv[referrer] || 0) + 1;
+    S.ref.earned[referrer] = (S.ref.earned[referrer] || 0) + rewards.ref;
+    user(referrer).bal += rewards.ref;                                    // مستقیم به موجودی
+    b.g += rewards.ref;
     save();
     return true;
   }
-  // ۱۰ خانه: خانه‌ی ۰ جایزه، ۹ خانه‌ی دیگه پوچ. نتیجه سمت سرور و با random امن تعیین می‌شه
+  // گردونه‌ی روزانه: روزی یک بار برای هر کاربر؛ خانه‌ها هم‌شانس‌اند؛ نتیجه سمت سرور با random امن
   function spin(uid) {
     uid = String(uid);
-    if ((S.ref.spins[uid] || 0) < 1) throw err('nospin');
-    S.ref.spins[uid]--;                                // اول کم می‌شه (بدون await)
-    const slot = crypto.randomInt(10);
-    const win = slot === 0;
-    if (win) user(uid).bal += prize;
+    const b = bonusState();
+    if (b.wheel[uid]) throw err('spinused');
+    if (b.g >= rewards.global) throw err('bonuscap');
+    b.wheel[uid] = 1;                                   // اول ثبت می‌شه (بدون await)
+    const slot = crypto.randomInt(rewards.wheel.length);
+    const amount = rewards.wheel[slot];
+    if (amount > 0) { user(uid).bal += amount; b.g += amount; }
     save();
-    return { slot, win, amount: win ? Math.round(prize) : 0 };
+    return { slot, win: amount > 0, amount };
+  }
+  function wheelInfo(uid) {
+    const b = bonusState();
+    return { prizes: rewards.wheel, canSpin: !b.wheel[String(uid)] && b.g < rewards.global, capped: b.g >= rewards.global };
   }
 
   /* ---- تبدیل سکه به TON ---- */
   // هشدار: سکه‌ها سمت کاربر (مرورگر) نگه‌داری می‌شن و سرور نمی‌تونه درستی‌شون رو بررسی کنه؛
   // برای همین سقف روزانه‌ی هر کاربر و سقف روزانه‌ی کل سرور وجود داره.
-  const dayKey = () => new Date().toISOString().slice(0, 10);
   function convState() {
     const d = dayKey();
     if (S.conv.day !== d) { S.conv.day = d; S.conv.users = {}; S.conv.g = 0; }
