@@ -13,6 +13,9 @@
     TONCENTER_API_KEY  کلید رایگان toncenter (پیشنهادی؛ بدون اون نرخ درخواست کمه)
     TWA_RETURN_URL     لینک برگشت به تلگرام بعد از تأیید در ولت، مثل https://t.me/نام_ربات/نام_اپ (لینک رفرال هم از همین ساخته می‌شه)
     REF_PRIZE          جایزه‌ی گردونه‌ی رفرال به TON (پیش‌فرض 0.012)
+    COIN_UNIT / COIN_UNIT_TON   نرخ تبدیل: هر COIN_UNIT سکه = COIN_UNIT_TON تون (پیش‌فرض 1000 سکه = 0.001)
+    CONVERT_DAILY_COINS         سقف تبدیل روزانه‌ی هر کاربر، به سکه (پیش‌فرض 20000؛ 0 = تبدیل خاموش)
+    CONVERT_GLOBAL_TON          سقف تبدیل روزانه‌ی کل کاربران، به TON (پیش‌فرض 1)
     DEFAULT_MODE       on | soon | off
     PUBLIC_URL         آدرس عمومی سایت (اختیاری؛ برای manifest)
 */
@@ -70,6 +73,12 @@ const DEPOSIT_ADDRESS = process.env.DEPOSIT_ADDRESS || 'UQB26xkOJbJyP5oqhW1fYjZv
 const MIN_WD = parseNano(process.env.MIN_WITHDRAW || '0.01');
 const FEE_WD = parseNano(process.env.WITHDRAW_FEE || '0.0007');
 const REF_PRIZE = parseNano(process.env.REF_PRIZE || '0.012');   // جایزه‌ی گردونه‌ی رفرال
+const CONV = {                                                     // تبدیل سکه به TON
+  unit: Number(process.env.COIN_UNIT) || 1000,                     // هر چند سکه...
+  unitNano: parseNano(process.env.COIN_UNIT_TON || '0.001'),       // ...چند TON
+  daily: process.env.CONVERT_DAILY_COINS !== undefined ? Number(process.env.CONVERT_DAILY_COINS) : 20000,   // سقف روزانه‌ی هر کاربر (سکه)
+  global: parseNano(process.env.CONVERT_GLOBAL_TON || '1')         // سقف روزانه‌ی کل سرور (TON)
+};
 const walletAllowed = !!(process.env.DATA_DIR || process.env.ALLOW_EPHEMERAL === '1');
 const sender = { ready: false };
 let lib = null;
@@ -147,7 +156,7 @@ async function setupSender() {
 
 let wallet = null;
 if (walletAllowed && DEPOSIT_ADDRESS) {
-  wallet = createWallet({ dir: DATA_DIR, address: DEPOSIT_ADDRESS, min: MIN_WD, fee: FEE_WD, prize: REF_PRIZE, sender, fetchTxs, normalizeAddress });
+  wallet = createWallet({ dir: DATA_DIR, address: DEPOSIT_ADDRESS, min: MIN_WD, fee: FEE_WD, prize: REF_PRIZE, conv: CONV, sender, fetchTxs, normalizeAddress });
   let scanning = false;
   const tick = async () => { if (scanning) return; scanning = true; try { await wallet.scan(); } catch (e) { console.error('scan:', e.message); } scanning = false; };
   setupSender().then(() => { setTimeout(tick, 2000); setInterval(tick, 15000); });
@@ -204,6 +213,16 @@ http.createServer(async (req, res) => {
         twaReturnUrl: process.env.TWA_RETURN_URL || '',
         refLink: base ? base + '?startapp=ref_' + u.id : ''
       }));
+    }
+    if (req.method === 'POST' && url.pathname === '/api/wallet/convert') {
+      const body = await readBody(req);
+      const u = verifyInitData(body.initData);
+      if (!u) return json(res, 403, { error: 'auth' });
+      if (!wallet) return json(res, 400, { error: 'disabled' });
+      let r;
+      try { r = wallet.convert(u.id, body.coins); }
+      catch (e) { return json(res, 400, { error: e.code || 'error' }); }
+      return json(res, 200, Object.assign(wallet.info(u.id), { converted: r, twaReturnUrl: process.env.TWA_RETURN_URL || '' }));
     }
     if (req.method === 'POST' && url.pathname === '/api/wallet/spin') {
       const body = await readBody(req);

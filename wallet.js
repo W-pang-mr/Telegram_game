@@ -25,9 +25,11 @@ function createWallet(o) {
   const min = o.min, fee = o.fee;
   const sender = o.sender;               // { ready, send(to, nano) }
   const prize = o.prize || 12000000;     // جایزه‌ی گردونه (نانوتون)
+  const conv = Object.assign({ unit: 1000, unitNano: 1000000, daily: 20000, global: 1e9 }, o.conv);   // تبدیل سکه به TON
   let S = { v: 1, users: {}, seen: [], wd: [], unmatched: [], nid: 1 };
   try { S = Object.assign(S, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) { /* اولین اجرا */ }
   S.ref = Object.assign({ by: {}, spins: {}, inv: {} }, S.ref);   // رفرال: by[دعوت‌شده]=دعوت‌کننده
+  S.conv = Object.assign({ day: '', users: {}, g: 0 }, S.conv);     // سقف روزانه‌ی تبدیل سکه
   const seen = new Set(S.seen);
   // درخواست‌هایی که وسط ارسال قطع شدن: تکلیفشون معلوم نیست → بررسی دستی
   for (const w of S.wd) if (w.status === 'pending' || w.status === 'sending') w.status = 'review';
@@ -50,6 +52,7 @@ function createWallet(o) {
     return {
       enabled: true, balance: u.bal, address: o.address, memo: memoOf(uid),
       min: Math.round(min), fee: Math.round(fee), canWithdraw: !!sender.ready,
+      conv: convInfo(uid),
       spins: S.ref.spins[String(uid)] || 0, invited: S.ref.inv[String(uid)] || 0, prize: Math.round(prize),
       history: S.wd.filter(w => w.uid === String(uid)).slice(-6).reverse()
         .map(w => ({ id: w.id, amount: w.amount, fee: w.fee, net: w.net, to: w.to, status: w.status, t: w.t }))
@@ -143,7 +146,41 @@ function createWallet(o) {
     return { slot, win, amount: win ? Math.round(prize) : 0 };
   }
 
-  return { info, scan, withdraw, refer, spin, state: () => S };
+  /* ---- تبدیل سکه به TON ---- */
+  // هشدار: سکه‌ها سمت کاربر (مرورگر) نگه‌داری می‌شن و سرور نمی‌تونه درستی‌شون رو بررسی کنه؛
+  // برای همین سقف روزانه‌ی هر کاربر و سقف روزانه‌ی کل سرور وجود داره.
+  const dayKey = () => new Date().toISOString().slice(0, 10);
+  function convState() {
+    const d = dayKey();
+    if (S.conv.day !== d) { S.conv.day = d; S.conv.users = {}; S.conv.g = 0; }
+    return S.conv;
+  }
+  function convInfo(uid) {
+    const c = convState();
+    let left = Math.max(0, conv.daily - (c.users[String(uid)] || 0));
+    const gLeft = Math.floor(Math.max(0, conv.global - c.g) / conv.unitNano) * conv.unit;
+    left = Math.min(left, gLeft);
+    left -= left % conv.unit;
+    return { unit: conv.unit, unitNano: Math.round(conv.unitNano), daily: conv.daily, left };
+  }
+  function convert(uid, coins) {
+    if (typeof coins === 'string') coins = Number(coins);
+    if (!Number.isSafeInteger(coins) || coins <= 0) throw err('amount');
+    if (coins < conv.unit) throw err('convmin');
+    if (coins % conv.unit) throw err('amount');
+    uid = String(uid);
+    const c = convState();
+    if ((c.users[uid] || 0) + coins > conv.daily) throw err('convlimit');
+    const nano = (coins / conv.unit) * conv.unitNano;
+    if (c.g + nano > conv.global) throw err('convglobal');
+    c.users[uid] = (c.users[uid] || 0) + coins;
+    c.g += nano;
+    user(uid).bal += nano;
+    save();
+    return { coins, nano: Math.round(nano) };
+  }
+
+  return { info, scan, withdraw, refer, spin, convert, state: () => S };
 }
 
 module.exports = { createWallet, parseNano, memoOf };
