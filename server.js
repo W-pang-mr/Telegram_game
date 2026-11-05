@@ -11,7 +11,8 @@
     MIN_WITHDRAW       حداقل برداشت (پیش‌فرض 0.01)
     WITHDRAW_FEE       کارمزد کلی برداشت (پیش‌فرض 0.0007)، از مبلغ برداشت کم می‌شه
     TONCENTER_API_KEY  کلید رایگان toncenter (پیشنهادی؛ بدون اون نرخ درخواست کمه)
-    TWA_RETURN_URL     لینک برگشت به تلگرام بعد از تأیید در ولت، مثل https://t.me/نام_ربات/نام_اپ
+    TWA_RETURN_URL     لینک برگشت به تلگرام بعد از تأیید در ولت، مثل https://t.me/نام_ربات/نام_اپ (لینک رفرال هم از همین ساخته می‌شه)
+    REF_PRIZE          جایزه‌ی گردونه‌ی رفرال به TON (پیش‌فرض 0.012)
     DEFAULT_MODE       on | soon | off
     PUBLIC_URL         آدرس عمومی سایت (اختیاری؛ برای manifest)
 */
@@ -58,7 +59,7 @@ function verifyInitData(initData) {
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   const age = Math.floor(Date.now() / 1000) - Number(p.get('auth_date') || 0);
   if (!(age >= 0 && age <= MAX_AGE) && !(age < 0 && age > -300)) return null;
-  try { return JSON.parse(p.get('user') || 'null'); } catch (e) { return null; }
+  try { const u = JSON.parse(p.get('user') || 'null'); if (u) u.start_param = String(p.get('start_param') || ''); return u; } catch (e) { return null; }
 }
 const isAdmin = user => !!user && ADMIN_IDS.includes(String(user.id));
 
@@ -68,6 +69,7 @@ const TC_KEY = process.env.TONCENTER_API_KEY || '';
 const DEPOSIT_ADDRESS = process.env.DEPOSIT_ADDRESS || 'UQB26xkOJbJyP5oqhW1fYjZvfb-H4UhgNllpRj7lMqJwW_Bt';
 const MIN_WD = parseNano(process.env.MIN_WITHDRAW || '0.01');
 const FEE_WD = parseNano(process.env.WITHDRAW_FEE || '0.0007');
+const REF_PRIZE = parseNano(process.env.REF_PRIZE || '0.012');   // جایزه‌ی گردونه‌ی رفرال
 const walletAllowed = !!(process.env.DATA_DIR || process.env.ALLOW_EPHEMERAL === '1');
 const sender = { ready: false };
 let lib = null;
@@ -145,7 +147,7 @@ async function setupSender() {
 
 let wallet = null;
 if (walletAllowed && DEPOSIT_ADDRESS) {
-  wallet = createWallet({ dir: DATA_DIR, address: DEPOSIT_ADDRESS, min: MIN_WD, fee: FEE_WD, sender, fetchTxs, normalizeAddress });
+  wallet = createWallet({ dir: DATA_DIR, address: DEPOSIT_ADDRESS, min: MIN_WD, fee: FEE_WD, prize: REF_PRIZE, sender, fetchTxs, normalizeAddress });
   let scanning = false;
   const tick = async () => { if (scanning) return; scanning = true; try { await wallet.scan(); } catch (e) { console.error('scan:', e.message); } scanning = false; };
   setupSender().then(() => { setTimeout(tick, 2000); setInterval(tick, 15000); });
@@ -195,7 +197,23 @@ http.createServer(async (req, res) => {
       const u = verifyInitData(body.initData);
       if (!u) return json(res, 403, { error: 'auth' });
       if (!wallet) return json(res, 200, { enabled: false });
-      return json(res, 200, Object.assign(wallet.info(u.id), { twaReturnUrl: process.env.TWA_RETURN_URL || '' }));
+      const rm = /^ref_(\d{1,15})$/.exec(u.start_param || '');
+      if (rm) wallet.refer(u.id, rm[1]);                 // باید قبل از info بیاد (info کاربر رو می‌سازه)
+      const base = (process.env.TWA_RETURN_URL || '').split('?')[0];
+      return json(res, 200, Object.assign(wallet.info(u.id), {
+        twaReturnUrl: process.env.TWA_RETURN_URL || '',
+        refLink: base ? base + '?startapp=ref_' + u.id : ''
+      }));
+    }
+    if (req.method === 'POST' && url.pathname === '/api/wallet/spin') {
+      const body = await readBody(req);
+      const u = verifyInitData(body.initData);
+      if (!u) return json(res, 403, { error: 'auth' });
+      if (!wallet) return json(res, 400, { error: 'disabled' });
+      let r;
+      try { r = wallet.spin(u.id); }
+      catch (e) { return json(res, 400, { error: e.code || 'error' }); }
+      return json(res, 200, Object.assign(wallet.info(u.id), { spin: r, twaReturnUrl: process.env.TWA_RETURN_URL || '' }));
     }
     if (req.method === 'POST' && url.pathname === '/api/wallet/withdraw') {
       const body = await readBody(req);

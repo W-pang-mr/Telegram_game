@@ -7,6 +7,7 @@
 */
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const NANO = 1e9;
 function parseNano(s) {
@@ -23,8 +24,10 @@ function createWallet(o) {
   const file = path.join(o.dir, 'wallet.json');
   const min = o.min, fee = o.fee;
   const sender = o.sender;               // { ready, send(to, nano) }
+  const prize = o.prize || 12000000;     // جایزه‌ی گردونه (نانوتون)
   let S = { v: 1, users: {}, seen: [], wd: [], unmatched: [], nid: 1 };
   try { S = Object.assign(S, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) { /* اولین اجرا */ }
+  S.ref = Object.assign({ by: {}, spins: {}, inv: {} }, S.ref);   // رفرال: by[دعوت‌شده]=دعوت‌کننده
   const seen = new Set(S.seen);
   // درخواست‌هایی که وسط ارسال قطع شدن: تکلیفشون معلوم نیست → بررسی دستی
   for (const w of S.wd) if (w.status === 'pending' || w.status === 'sending') w.status = 'review';
@@ -47,6 +50,7 @@ function createWallet(o) {
     return {
       enabled: true, balance: u.bal, address: o.address, memo: memoOf(uid),
       min: Math.round(min), fee: Math.round(fee), canWithdraw: !!sender.ready,
+      spins: S.ref.spins[String(uid)] || 0, invited: S.ref.inv[String(uid)] || 0, prize: Math.round(prize),
       history: S.wd.filter(w => w.uid === String(uid)).slice(-6).reverse()
         .map(w => ({ id: w.id, amount: w.amount, fee: w.fee, net: w.net, to: w.to, status: w.status, t: w.t }))
     };
@@ -114,7 +118,32 @@ function createWallet(o) {
     return item;
   }
 
-  return { info, scan, withdraw, state: () => S };
+  /* ---- رفرال و گردونه ---- */
+  // فقط برای کاربر کاملاً جدید (که قبلاً هیچ رکوردی نداشته) و فقط یک‌بار به‌ازای هر کاربر
+  function refer(invited, referrer) {
+    invited = String(invited); referrer = String(referrer);
+    if (!/^\d{1,15}$/.test(referrer) || invited === referrer) return false;
+    if (S.users[invited] || S.ref.by[invited]) return false;
+    if (!S.users[referrer]) return false;
+    S.ref.by[invited] = referrer;
+    S.ref.spins[referrer] = (S.ref.spins[referrer] || 0) + 1;
+    S.ref.inv[referrer] = (S.ref.inv[referrer] || 0) + 1;
+    save();
+    return true;
+  }
+  // ۱۰ خانه: خانه‌ی ۰ جایزه، ۹ خانه‌ی دیگه پوچ. نتیجه سمت سرور و با random امن تعیین می‌شه
+  function spin(uid) {
+    uid = String(uid);
+    if ((S.ref.spins[uid] || 0) < 1) throw err('nospin');
+    S.ref.spins[uid]--;                                // اول کم می‌شه (بدون await)
+    const slot = crypto.randomInt(10);
+    const win = slot === 0;
+    if (win) user(uid).bal += prize;
+    save();
+    return { slot, win, amount: win ? Math.round(prize) : 0 };
+  }
+
+  return { info, scan, withdraw, refer, spin, state: () => S };
 }
 
 module.exports = { createWallet, parseNano, memoOf };
