@@ -820,7 +820,7 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
       <button class="btn wb" id="wConn">🔗 اتصال</button>
       <button class="btn wb" id="wDep">واریز</button>
       <button class="btn wb" id="wWd">برداشت</button>
-      <button class="btn wb rf" id="wRef" aria-label="دعوت دوستان">🎡<i id="wRefN"></i></button>
+      <button class="btn wb rf" id="wRef" aria-label="جایزه و دعوت">🎡<i id="wRefN"></i></button>
     </div>
     <div id="mbody">
       <section id="tHome" class="tab on ent">
@@ -874,7 +874,7 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
 <div id="wsh">
   <div class="ap">
     <div class="ah"><span>💎 کیف پول TON</span><button class="ax" id="wX">✕</button></div>
-    <div class="wtabs"><button data-p="dep" class="on">واریز</button><button data-p="wd">برداشت</button><button data-p="ref">🎡 دعوت</button><button data-p="conv">🪙 تبدیل</button></div>
+    <div class="wtabs"><button data-p="dep" class="on">واریز</button><button data-p="wd">برداشت</button><button data-p="ref">🎁 جایزه</button><button data-p="conv">🪙 تبدیل</button></div>
     <div class="wpan on" id="pDep">
       <div class="wl">موجودی شما: <b id="dBal">0</b> TON</div>
       <div class="wk">آدرس واریز</div>
@@ -898,11 +898,12 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
       <div id="wHist"></div>
     </div>
     <div class="wpan" id="pRef">
-      <div class="wl">با هر دوستی که با لینک تو وارد بازی بشه <b>۱ گردونه</b> می‌گیری 🎡<br>احتمال برد ۱ از ۱۰ · جایزه: <b><span id="rPr">0.012</span> TON</b></div>
+      <div class="wl">به‌ازای هر دوستی که با لینک تو وارد بازی بشه، <b><span id="rRw">0.005</span> TON</b> مستقیم به موجودیت اضافه می‌شه 🎁</div>
       <div class="wk">لینک دعوت تو</div>
       <div class="wcp"><code id="rLink">—</code><button class="wcb" data-c="rLink">کپی</button></div>
       <button class="wgo" id="rShare">📤 ارسال لینک به دوستان</button>
-      <div class="rs"><div>🎡 گردونه‌های تو<b id="rSp">0</b></div><div>👥 دعوت‌شده‌ها<b id="rInv">0</b></div></div>
+      <div class="rs"><div>👥 دعوت‌شده‌ها<b id="rInv">0</b></div><div>💰 درآمد از دعوت (TON)<b id="rEarn">0.00</b></div></div>
+      <div class="wl" style="margin-top:14px">🎡 <b>گردونه‌ی روزانه</b> — روزی یک بار رایگان</div>
       <div class="rw"><div id="rWheel"></div><i class="rp"></i></div>
       <button class="wgo" id="rGo">🎡 بچرخون</button>
       <div class="wn" id="rNote"></div>
@@ -3071,7 +3072,7 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
 
  /* ---------- ولت TON ---------- */
  var WAL=null,tc=null;
- var ERR={disabled:'برداشت فعلاً غیرفعاله',amount:'مقدار نامعتبره',min:'مقدار کمتر از حداقل برداشته',address:'آدرس مقصد نامعتبره',pending:'یک برداشت در حال انجامه، کمی صبر کن',insufficient:'موجودی کافی نیست',nospin:'گردونه‌ای نداری؛ دوستات رو دعوت کن',convmin:'مقدار کمتر از حداقل تبدیله',convlimit:'سقف تبدیل امروزت پر شده؛ فردا دوباره امتحان کن',convglobal:'سقف تبدیل امروز پر شده؛ فردا دوباره امتحان کن',auth:'فقط داخل تلگرام کار می‌کنه',error:'خطایی پیش اومد؛ دوباره امتحان کن'};
+ var ERR={disabled:'برداشت فعلاً غیرفعاله',amount:'مقدار نامعتبره',min:'مقدار کمتر از حداقل برداشته',address:'آدرس مقصد نامعتبره',pending:'یک برداشت در حال انجامه، کمی صبر کن',insufficient:'موجودی کافی نیست',spinused:'امروز گردونه رو چرخوندی؛ فردا دوباره',bonuscap:'سقف جایزه‌ی امروز پر شده؛ فردا دوباره امتحان کن',convmin:'مقدار کمتر از حداقل تبدیله',convlimit:'سقف تبدیل امروزت پر شده؛ فردا دوباره امتحان کن',convglobal:'سقف تبدیل امروز پر شده؛ فردا دوباره امتحان کن',auth:'فقط داخل تلگرام کار می‌کنه',error:'خطایی پیش اومد؛ دوباره امتحان کن'};
  var STAT={pending:'⏳ در صف',sending:'⏳ در حال ارسال',sent:'✅ ارسال شد',failed:'↩️ ناموفق (برگشت خورد)',review:'🔎 در حال بررسی'};
  function digits(s){return String(s).replace(/[۰-۹]/g,function(d){return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)}).replace(/[٠-٩]/g,function(d){return '٠١٢٣٤٥٦٧٨٩'.indexOf(d)}).replace(/[٫،,]/g,'.')}
  function toNano(s){s=digits(s).trim();if(!/^\d{1,6}(\.\d{1,9})?$/.test(s))return null;var p=s.split('.');return Number(p[0])*1e9+Number(((p[1]||'')+'000000000').slice(0,9))}
@@ -3200,17 +3201,17 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
   }).catch(function(e){wnote(ERR[e.code]||ERR.error,1)}).then(function(){b.classList.remove('busy')});
  };
 
- /* ---------- رفرال و گردونه ---------- */
+ /* ---------- رفرال و گردونه‌ی روزانه ---------- */
  var spinning=false,rot=0,wheelBuilt=false;
  function rnote(t,err){var n=$('rNote');n.textContent=t;n.className='wn'+(err?' err':'')}
  function buildWheel(){
-  var R=96,h='<svg viewBox="-100 -100 200 200">';
-  for(var i=0;i<10;i++){
-   var a0=i*36*Math.PI/180,a1=(i+1)*36*Math.PI/180;
+  var P=WAL.wheel.prizes,N=P.length,A=360/N,R=96,h='<svg viewBox="-100 -100 200 200">';
+  for(var i=0;i<N;i++){
+   var a0=i*A*Math.PI/180,a1=(i+1)*A*Math.PI/180;
    var x0=R*Math.sin(a0),y0=-R*Math.cos(a0),x1=R*Math.sin(a1),y1=-R*Math.cos(a1);
-   var fill=i===0?'#fbbf24':(i%2?'#1e3a8a':'#2563eb');
+   var fill=P[i]>0?'#fbbf24':(i%2?'#1e3a8a':'#2563eb');
    h+='<path d="M0 0L'+x0.toFixed(2)+' '+y0.toFixed(2)+'A'+R+' '+R+' 0 0 1 '+x1.toFixed(2)+' '+y1.toFixed(2)+'Z" fill="'+fill+'" stroke="#e0efff" stroke-width="1.5"/>';
-   h+='<text transform="rotate('+(i*36+18)+') translate(0,-66)" text-anchor="middle" font-size="'+(i===0?11:10)+'" font-weight="900" fill="'+(i===0?'#3b2300':'#fff')+'">'+(i===0?fmtTon(WAL.prize):'پوچ')+'</text>';
+   h+='<text transform="rotate('+(i*A+A/2)+') translate(0,-62)" text-anchor="middle" font-size="'+(P[i]>0?9:10)+'" font-weight="900" fill="'+(P[i]>0?'#3b2300':'#fff')+'">'+(P[i]>0?fmtTon(P[i]):'پوچ')+'</text>';
   }
   h+='<circle r="13" fill="#0b1f4d" stroke="#e0efff" stroke-width="2"/></svg>';
   $('rWheel').innerHTML=h;wheelBuilt=true;
@@ -3218,21 +3219,24 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
  function renderRef(){
   if(!wheelBuilt)buildWheel();
   $('rLink').textContent=WAL.refLink||'لینک هنوز تنظیم نشده (TWA_RETURN_URL)';
-  $('rSp').textContent=WAL.spins||0;$('rInv').textContent=WAL.invited||0;$('rPr').textContent=fmtTon(WAL.prize);
-  var n=$('wRefN');n.textContent=WAL.spins||'';n.style.display=WAL.spins?'block':'none';
-  $('rGo').disabled=spinning||!(WAL.spins>0);
+  $('rRw').textContent=fmtTon(WAL.refReward);
+  $('rInv').textContent=WAL.invited||0;$('rEarn').textContent=fmtTon(WAL.earned||0);
+  var can=WAL.wheel.canSpin;
+  var n=$('wRefN');n.textContent='!';n.style.display=can?'block':'none';
+  $('rGo').disabled=spinning||!can;
+  $('rGo').textContent=can?'🎡 بچرخون':(WAL.wheel.capped?'سقف جایزه‌ی امروز پر شده':'امروز چرخوندی؛ فردا دوباره');
   $('rShare').disabled=!WAL.refLink;
  }
  $('rGo').onclick=function(){
-  if(!WAL||spinning||!(WAL.spins>0))return;
+  if(!WAL||spinning||!WAL.wheel.canSpin)return;
   spinning=true;$('rGo').disabled=true;rnote('');
   api('/api/wallet/spin',{initData:initData}).then(function(d){
-   var s=d.spin,center=s.slot*36+18,jit=(Math.random()-.5)*20;
+   var s=d.spin,A=360/WAL.wheel.prizes.length,center=s.slot*A+A/2,jit=(Math.random()-.5)*A*.6;
    var base=rot-(rot%360);rot=base+360*6+(360-center)+jit;
    $('rWheel').style.transform='rotate('+rot+'deg)';
    setTimeout(function(){
     WAL=d;spinning=false;renderWal();
-    rnote(s.win?'🎉 تبریک! '+fmtTon(s.amount)+' TON برنده شدی':'😅 این بار پوچ شد؛ دفعه‌ی بعد!',0);
+    rnote(s.win?'🎉 تبریک! '+fmtTon(s.amount)+' TON برنده شدی':'😅 این بار پوچ شد؛ فردا دوباره امتحان کن!',0);
    },4800);
   }).catch(function(e){spinning=false;renderRef();rnote(ERR[e.code]||ERR.error,1)});
  };
