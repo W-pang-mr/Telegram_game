@@ -890,8 +890,9 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
     </div>
     <div class="wpan" id="pWd">
       <div class="wl">موجودی شما: <b id="wBal2">0</b> TON</div>
-      <div class="wk">مقصد (کیف پول وصل‌شده)</div>
-      <div class="wcp"><code id="wTo">—</code><button class="wcb" id="wToBtn">اتصال</button></div>
+      <div class="wk">آدرس مقصد (TON)</div>
+      <div class="wrow"><input id="wAddr" inputmode="text" placeholder="آدرس کیف پول مقصد را وارد کن" autocomplete="off" style="direction:ltr;text-align:left;flex:1;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;font-size:12px;font-weight:700"></div>
+      <div class="wcp" style="margin-top:6px"><code id="wTo">—</code><button class="wcb" id="wToBtn">از ولت وصل‌شده</button></div>
       <div class="wrow"><input id="wAmt" inputmode="decimal" placeholder="مقدار برداشت (TON)" autocomplete="off"><button class="wmax" id="wMax">حداکثر</button></div>
       <p class="wwarn" style="color:#cfe3ff;font-weight:800">حداقل <b id="wMin"></b> · کارمزد <b id="wFee"></b> · دریافتی شما <b id="wNet">0</b> TON</p>
       <button class="wgo" id="wGo">برداشت</button>
@@ -928,6 +929,16 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
     <button class="ao" data-m="on"><em>✅</em><span>فعال<small>بازی برای همه باز است</small></span></button>
     <button class="ao" data-m="soon"><em>⏳</em><span>به‌زودی (Coming Soon)<small>کاربران صفحه‌ی «به‌زودی» می‌بینن</small></span></button>
     <button class="ao" data-m="off"><em>⛔</em><span>خاموش<small>بازی موقتاً بسته است</small></span></button>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12)">
+      <p class="as" style="margin-bottom:8px">💸 حالت برداشت</p>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <button class="btn" id="wdAuto" style="flex:1;padding:10px;font-size:12px">⚡ خودکار</button>
+        <button class="btn" id="wdManual" style="flex:1;padding:10px;font-size:12px">✋ دستی</button>
+      </div>
+      <p class="as" style="margin-bottom:6px">درخواست‌های در انتظار</p>
+      <div id="wdList" style="max-height:180px;overflow-y:auto;font-size:11px;margin-bottom:8px"></div>
+      <button class="btn" id="wdRefresh" style="width:100%;padding:8px;font-size:12px;margin-bottom:10px">🔄 بروزرسانی لیست</button>
+    </div>
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12)">
       <p class="as" style="margin-bottom:8px">🎁 دادن سکه به کاربر (آیدی عددی تلگرام)</p>
       <div style="display:flex;gap:6px;margin-bottom:6px">
@@ -3227,6 +3238,56 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
  $('admGive').onclick=function(){admCoins(false)};
  $('admSet').onclick=function(){admCoins(true)};
 
+ var _wdMode='auto';
+ function fmtNano(n){return (Number(n)/1e9).toFixed(4)}
+ function setWdModeBtns(){
+  var a=$('wdAuto'),m=$('wdManual');
+  if(!a||!m)return;
+  a.style.opacity=_wdMode==='auto'?'1':'.5';
+  m.style.opacity=_wdMode==='manual'?'1':'.5';
+  a.style.outline=_wdMode==='auto'?'2px solid #22c55e':'none';
+  m.style.outline=_wdMode==='manual'?'2px solid #f59e0b':'none';
+ }
+ function loadWdList(){
+  if(!initData)return;
+  api('/api/admin/withdrawals',{initData:initData}).then(function(d){
+    _wdMode=d.mode||'auto';setWdModeBtns();
+    var box=$('wdList');if(!box)return;
+    if(!d.items||!d.items.length){box.innerHTML='<div style="opacity:.6;padding:8px">درخواستی در صف نیست</div>';return}
+    box.innerHTML=d.items.map(function(x){
+      return '<div style="background:rgba(0,0,0,.25);border-radius:10px;padding:8px;margin-bottom:6px">'+
+        '<div style="font-weight:800">#'+x.id+' · uid '+x.uid+' · '+fmtNano(x.amount)+' TON</div>'+
+        '<div style="direction:ltr;font-size:10px;opacity:.8;margin:4px 0;word-break:break-all">'+x.to+'</div>'+
+        '<div style="display:flex;gap:6px">'+
+        '<button class="btn" data-wa="ok" data-id="'+x.id+'" data-uid="'+x.uid+'" style="flex:1;padding:6px;font-size:11px;background:linear-gradient(180deg,#22c55e,#15803d)">✅ تأیید</button>'+
+        '<button class="btn" data-wa="no" data-id="'+x.id+'" data-uid="'+x.uid+'" style="flex:1;padding:6px;font-size:11px;background:linear-gradient(180deg,#ef4444,#b91c1c)">❌ رد</button>'+
+        '</div></div>';
+    }).join('');
+    box.querySelectorAll('[data-wa]').forEach(function(btn){
+      btn.onclick=function(){
+        var id=btn.getAttribute('data-id'), uid=btn.getAttribute('data-uid');
+        var action=btn.getAttribute('data-wa')==='ok'?'approve':'reject';
+        btn.classList.add('busy');
+        api('/api/admin/withdraw-action',{initData:initData,id:id,action:action,uid:uid}).then(function(){
+          say(action==='approve'?'✓ تأیید و ارسال شد':'رد شد و موجودی برگشت');
+          loadWdList();
+        }).catch(function(e){say((e&&e.code)||'خطا',1)}).then(function(){btn.classList.remove('busy')});
+      };
+    });
+  }).catch(function(){});
+ }
+ if($('wdAuto'))$('wdAuto').onclick=function(){
+  api('/api/admin/withdraw-mode',{initData:initData,mode:'auto'}).then(function(d){_wdMode=d.mode;setWdModeBtns();say('برداشت خودکار شد')}).catch(function(){say('خطا',1)});
+ };
+ if($('wdManual'))$('wdManual').onclick=function(){
+  api('/api/admin/withdraw-mode',{initData:initData,mode:'manual'}).then(function(d){_wdMode=d.mode;setWdModeBtns();say('برداشت دستی شد — باید تأیید کنی')}).catch(function(){say('خطا',1)});
+ };
+ if($('wdRefresh'))$('wdRefresh').onclick=loadWdList;
+ // وقتی پنل ادمین باز می‌شه لیست رو بگیر
+ var _avt=$('avt');
+ if(_avt){var _oldAvt=_avt.onclick;_avt.onclick=function(){if(_oldAvt)_oldAvt.apply(this,arguments);if(admin){setTimeout(loadWdList,200)}}};
+
+
  /* ---------- ولت TON ---------- */
  var WAL=null,tc=null;
  var ERR={disabled:'برداشت فعلاً غیرفعاله',amount:'مقدار نامعتبره',min:'مقدار کمتر از حداقل برداشته',address:'آدرس مقصد نامعتبره',pending:'یک برداشت در حال انجامه، کمی صبر کن',insufficient:'موجودی کافی نیست',spinused:'امروز گردونه رو چرخوندی؛ فردا دوباره',bonuscap:'سقف جایزه‌ی امروز پر شده؛ فردا دوباره امتحان کن',convmin:'مقدار کمتر از حداقل تبدیله',convlimit:'سقف تبدیل امروزت پر شده؛ فردا دوباره امتحان کن',convglobal:'سقف تبدیل امروز پر شده؛ فردا دوباره امتحان کن',auth:'فقط داخل تلگرام کار می‌کنه',error:'خطایی پیش اومد؛ دوباره امتحان کن'};
@@ -3281,8 +3342,8 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
   $('wBal').textContent=b;$('dBal').textContent=b;$('wBal2').textContent=b;
   $('dAddr').textContent=WAL.address;$('dMemo').textContent=WAL.memo;
   $('wMin').textContent=fmtTon(WAL.min);$('wFee').textContent=fmtTon(WAL.fee);
-  $('wGo').disabled=!WAL.canWithdraw;
-  $('wGo').textContent=WAL.canWithdraw?'برداشت':'برداشت فعلاً غیرفعاله';
+  $('wGo').disabled=false;
+  $('wGo').textContent=WAL.withdrawMode==='manual'?'ثبت درخواست برداشت':'برداشت';
   calcNet();
   var h='';
   for(var i=0;i<WAL.history.length;i++){var x=WAL.history[i];h+='<div class="wh"><b>'+fmtTon(x.amount)+' TON</b><span>'+(STAT[x.status]||x.status)+'</span></div>'}
@@ -3324,7 +3385,6 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
  $('wX').onclick=function(){$('wsh').classList.remove('show')};
  $('wsh').onclick=function(e){if(e.target===this)this.classList.remove('show')};
  $('wConn').onclick=toggleConnect;
- $('wToBtn').onclick=toggleConnect;
  $('wAmt').oninput=calcNet;
  $('wMax').onclick=function(){if(WAL){$('wAmt').value=rawTon(WAL.balance);calcNet()}};
  var cps=document.querySelectorAll('#wsh .wcb[data-c]');
@@ -3349,18 +3409,26 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
  };
 
  $('wGo').onclick=function(){
-  if(!WAL||!WAL.canWithdraw)return;
-  var a=acc();
-  if(!a){wnote('اول کیف پولت رو وصل کن',1);toggleConnect();return}
-  if(!mainnet()){wnote('کیف پولت روی شبکه‌ی اصلی TON نیست',1);return}
+  if(!WAL)return;
+  var addr=($('wAddr')&&$('wAddr').value||'').trim();
+  if(!addr){wnote('آدرس مقصد رو وارد کن یا از ولت وصل‌شده پر کن',1);return}
   var n=toNano($('wAmt').value);
   if(n===null){wnote(ERR.amount,1);return}
   if(n<WAL.min){wnote('حداقل برداشت '+fmtTon(WAL.min)+' TON هست',1);return}
   if(n>WAL.balance){wnote(ERR.insufficient,1);return}
   var b=this;b.classList.add('busy');wnote('در حال ثبت…');
-  api('/api/wallet/withdraw',{initData:initData,amount:rawTon(n),to:a.address}).then(function(d){
-   WAL=d;renderWal();$('wAmt').value='';calcNet();wnote('درخواست ثبت شد ✓ چند لحظه تا ارسال');pollMe(12)
+  api('/api/wallet/withdraw',{initData:initData,amount:rawTon(n),to:addr}).then(function(d){
+   WAL=d;applyServerState(d);renderWal();$('wAmt').value='';calcNet();
+   var manual=d.withdrawMode==='manual';
+   wnote(manual?'درخواست ثبت شد ✓ منتظر تأیید ادمین':'درخواست ثبت شد ✓ چند لحظه تا ارسال');
+   pollMe(12)
   }).catch(function(e){wnote(ERR[e.code]||ERR.error,1)}).then(function(){b.classList.remove('busy')});
+ };
+ // پر کردن آدرس از ولت وصل‌شده
+ $('wToBtn').onclick=function(){
+  var a=acc();
+  if(!a){toggleConnect();return}
+  if($('wAddr'))$('wAddr').value=friendly(a.address);
  };
 
  /* ---------- رفرال و گردونه‌ی روزانه ---------- */
