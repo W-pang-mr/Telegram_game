@@ -832,7 +832,6 @@ html[data-theme=light] #wal .wbal small{color:#1d4ed8}
         <div id="lvC"><div class="lvR"><small>LEVEL</small><b id="uLv">1</b></div><div class="lvL"><div class="lvT"><span id="uXpC">0/5</span><span>🏆 تا سطح بعد</span></div><div class="bar2"><i id="uXp"></i></div></div></div>
         <div id="swW" class="dg"><span>رنگ لشکر</span><div id="sw"></div></div>
         <div id="modes"></div>
-        <button class="btn" id="wldBtn">🌍 سرور عمومی · پایگاه بساز و به بقیه حمله کن!</button>
       </section>
       <section id="tQuest" class="tab"></section>
       <section id="tShop" class="tab"></section>
@@ -1187,7 +1186,7 @@ function nearestFoe(f,x,y){
   for(const e of F)if(e.alive&&!e.z&&e.id!==f.id){const d=Math.hypot(e.cx-x,e.cy-y);if(d<bd){bd=d;best={x:e.cx,y:e.cy}}}
   return best;
 }
-function aiPick(f){
+function aiPickBasic(f){
   if(mode==='zombie'){
     const z=nearestFoe(f,f.cx,f.cy);if(z){f.target=z;return}
   }
@@ -1201,6 +1200,100 @@ function aiPick(f){
     if(d<bs){bs=d;best={x:e.cx,y:e.cy}}
   }
   f.target=best;
+}
+
+/* ---------- هوش ربات‌ها (فقط برای رقیب‌ها؛ لشکر خودکار بازیکن همون هوش ساده‌ی قبلی رو داره) ---------- */
+const NVAL={crown:3.2,laser:2.8,sword:2.2,shield:2};
+const AIP={rt:.55,ct:.8,cast:3.3,minUc:12,ratio:1.1,nodeW:1,dropW:1};   // پارامترهای هوش ربات
+function aiNear(f,x,y,r){            // تعداد سرباز خودی و دشمن در یک محدوده
+  let a=0,b=0;
+  for(const u of units){
+    if(u.hp<=0||Math.abs(u.x-x)>r||Math.abs(u.y-y)>r)continue;
+    if(u.f===f.id)a++;else if(isFoe(f.id,u.f))b++;
+  }
+  return [a,b];
+}
+function aiPickPro(f){
+  if(f.abT===undefined)f.abT=12+Math.random()*10;
+  const foes=F.filter(e=>e.alive&&!e.z&&e.id!==f.id&&isFoe(f.id,e.id));
+  if(!foes.length){f.target=null;f.rx=f.ry=null;return}
+
+  // ۱) دفاع: اگه دشمن نزدیک قلعه‌ست، همه برمی‌گردن
+  let thr=0;
+  for(const u of units)if(u.hp>0&&isFoe(f.id,u.f)&&Math.hypot(u.x-f.cx,u.y-f.cy)<14)thr++;
+  const hurt=t-f.lastHit<3;
+  if(thr>=Math.max(4,f.uc*.4)||(hurt&&thr>0)){
+    f.target={x:f.cx,y:f.cy};f.rx=f.cx;f.ry=f.cy;f.tk='def';
+    if(f.abT<=t&&(thr>=6||f.hp<f.maxHp*.5)){f.rage=Math.max(f.rage,6);f.abT=t+38}
+    return;
+  }
+  f.rx=f.ry=null;
+
+  // مرکز لشکر (برای محاسبه‌ی فاصله‌ها)
+  let sx=0,sy=0,n=0;
+  for(const u of units)if(u.f===f.id&&u.hp>0&&!u.guard){sx+=u.x;sy+=u.y;n++}
+  const ax=n>3?sx/n:f.cx,ay=n>3?sy/n:f.cy;
+
+  let best=null,bs=0,bk='';
+  const consider=(sc,key,x,y,castle)=>{if(key===f.tk)sc*=1.3;if(sc>bs){bs=sc;best={x,y};bk=key;best.castle=castle}};
+
+  // ۲) گره‌ها (تاج و شمشیر و سپر و لیزر): ارزش ÷ فاصله، با احتیاط از جاهای شلوغِ دشمن
+  nodes.forEach((nd,i)=>{
+    if(nd.owner===f.id)return;
+    const d=Math.hypot(nd.gx-ax,nd.gy-ay);
+    let sc=AIP.nodeW*NVAL[nd.type]*(nd.owner>0?1.25:1)/(d+10);
+    const nr=aiNear(f,nd.gx,nd.gy,9);
+    if(nr[1]>nr[0]*2&&nr[1]>=6)sc*=.25;else if(nr[1]>nr[0]+3)sc*=.45;else if(nr[1]===0)sc*=1.1;
+    consider(sc,'n'+i,nd.gx,nd.gy,null);
+  });
+
+  // ۳) جعبه‌های امداد
+  for(const dr of drops){
+    const d=Math.hypot(dr.x-ax,dr.y-ay);
+    if(d<46)consider(AIP.dropW*(dr.type==='army'?4.6:3.7)/(d+8),'d'+Math.round(dr.x)+','+Math.round(dr.y),dr.x,dr.y,null);
+  }
+
+  // ۴) حمله به قلعه: فقط وقتی لشکرمون قوی‌تره یا قلعه‌ی دشمن ضعیف شده
+  for(const e of foes){
+    const ratio=(f.uc+2)/(e.uc+3),weak=e.hp<e.maxHp*.5;
+    const duel=foes.length===1;
+    if(!(f.uc>=AIP.minUc||duel)||!(ratio>=AIP.ratio||weak||duel&&ratio>=.85))continue;
+    const d=Math.hypot(e.cx-ax,e.cy-ay);
+    let sc=AIP.cast*Math.pow(ratio,1.3)*(weak?1.6:1)*(duel?2.5:1)/(d+14);
+    if(e.terr>F.reduce((m,x)=>x.alive&&!x.z?Math.max(m,x.terr):m,0)*.9)sc*=1.2;   // رهبر جدول رو بزن
+    consider(sc,'c'+e.id,e.cx,e.cy,e);
+  }
+
+  f.target=best;f.tk=bk;
+  // ۵) قابلیت: موقع حمله‌ی نهایی به قلعه، هجوم فعال می‌شه
+  if(best&&best.castle&&f.abT<=t){
+    const nr=aiNear(f,best.x,best.y,9);
+    if(nr[0]>=8){f.rage=Math.max(f.rage,6);f.abT=t+38}
+  }
+}
+function aiPick(f){
+  if(f.id===me||mode==='zombie')return aiPickBasic(f);
+  aiPickPro(f);
+}
+
+/* تصمیم‌ی هر سرباز: با نفرات کمتر عقب‌نشینی، با نفرات بیشتر حمله */
+function engage(u,f){
+  const bx=Math.min(BK-1,Math.max(0,u.x/4|0)),by=Math.min(BK-1,Math.max(0,u.y/4|0));
+  let fr=0,en=0,ex=0,ey=0,bd=1e9;
+  for(let yy=Math.max(0,by-1);yy<=Math.min(BK-1,by+1);yy++)for(let xx=Math.max(0,bx-1);xx<=Math.min(BK-1,bx+1);xx++){
+    const b=buckets[yy*BK+xx];
+    for(let i=0;i<b.length;i++){
+      const o=b[i];if(o.hp<=0||o===u)continue;
+      if(o.f===u.f)fr++;
+      else if(isFoe(u.f,o.f)){en++;const d=(o.x-u.x)*(o.x-u.x)+(o.y-u.y)*(o.y-u.y);if(d<bd){bd=d;ex=o.x;ey=o.y}}
+    }
+  }
+  if(!en)return false;
+  if(fr+1<en*AIP.rt&&Math.hypot(u.x-f.cx,u.y-f.cy)>5&&Math.random()<.85){   // کم‌تعدادیم → برگرد پای قلعه (تیراندازی قلعه کمک می‌کنه)
+    u.tx=f.cx+(Math.random()-.5)*3;u.ty=f.cy+(Math.random()-.5)*3;return true;
+  }
+  if(fr+1>=en*AIP.ct&&Math.random()<.9){u.tx=ex;u.ty=ey;return true}           // برتری داریم → حمله
+  return false;
 }
 function expand(f){
   const R=14+Math.min(20,f.terr/40)|0;
@@ -1366,6 +1459,7 @@ function updateUnits(dt){
         if(best&&Math.random()<.88){u.tx=best.cx+(Math.random()-.5)*3;u.ty=best.cy+(Math.random()-.5)*3}
         else{u.tx=Math.max(2,Math.min(GRID-3,u.x+(Math.random()-.5)*18));u.ty=Math.max(2,Math.min(GRID-3,u.y+(Math.random()-.5)*18))}
       }
+      else if(u.f!==me&&engage(u,f)){}
       else if(f.rx!==null&&Math.random()<.85){u.tx=f.rx+(Math.random()-.5)*4;u.ty=f.ry+(Math.random()-.5)*4}
       else if(f.target&&Math.random()<.7){u.tx=f.target.x+(Math.random()-.5)*4;u.ty=f.target.y+(Math.random()-.5)*4}
       else{u.tx=Math.max(2,Math.min(GRID-3,u.x+(Math.random()-.5)*18));u.ty=Math.max(2,Math.min(GRID-3,u.y+(Math.random()-.5)*18))}
@@ -3294,325 +3388,6 @@ window.hFxPost=function(c,x0,x1,y0,y1){_post(c,x0,x1,y0,y1);const me=H.P[0],t=H.
 })();
 
 </script>
-<style id="wcss">
-#wldBtn{display:block;width:100%;max-width:420px;margin:12px auto 0;padding:14px 10px;font-size:15px;border-radius:18px;background:linear-gradient(135deg,#16a34a,#0ea5e9);border:1px solid rgba(255,255,255,.4);color:#fff;font-weight:900;box-shadow:0 8px 24px rgba(14,165,233,.35)}
-#wld{position:fixed;inset:0;z-index:70;background:#0b1a12;display:none;touch-action:none;user-select:none;-webkit-user-select:none}
-#wld.on{display:block}
-#wld canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
-#wTop{position:absolute;left:8px;right:8px;top:calc(var(--sat,0px) + 8px);display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:16px;font-size:13px;font-weight:800;color:#fff;direction:rtl}
-#wTop span{display:flex;align-items:center;gap:3px;white-space:nowrap}
-#wTop b{direction:ltr}
-#wTop .sp{flex:1}
-#wBack{width:36px;height:36px;font-size:16px;padding:0}
-#wNote{position:absolute;left:50%;top:calc(var(--sat,0px) + 62px);transform:translateX(-50%);max-width:92%;padding:8px 14px;border-radius:14px;background:rgba(0,0,0,.78);color:#fff;font-size:13px;font-weight:800;text-align:center;opacity:0;transition:opacity .25s;pointer-events:none;z-index:3}
-#wNote.on{opacity:1}
-#wFeed{position:absolute;left:8px;right:8px;top:calc(var(--sat,0px) + 100px);display:flex;flex-direction:column;gap:4px;pointer-events:none;direction:rtl}
-#wFeed div{align-self:flex-start;padding:5px 10px;border-radius:10px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;max-width:92%}
-#wTgt{position:absolute;left:8px;right:8px;bottom:calc(var(--sab,0px) + 84px);display:none;align-items:center;gap:8px;padding:8px 10px;border-radius:16px;color:#fff;font-size:13px;font-weight:800;direction:rtl}
-#wTgt.on{display:flex}
-#wTgt .tx{flex:1;line-height:1.5}
-#wTgt button{padding:10px 14px;font-size:14px}
-#wGo[disabled]{opacity:.45}
-#wRank{position:absolute;left:8px;right:8px;top:calc(var(--sat,0px) + 62px);max-height:50%;overflow:auto;display:none;padding:10px 12px;border-radius:16px;color:#fff;font-size:13px;font-weight:700;direction:rtl}
-#wRank.on{display:block}
-#wRank div{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.1)}
-#wRank .me{color:#fde047}
-#wBar{position:absolute;left:8px;right:8px;bottom:calc(var(--sab,0px) + 10px);display:flex;gap:6px;justify-content:center;direction:ltr}
-#wBar .btn{flex:1;max-width:64px;min-height:58px;padding:4px 0;font-size:20px;line-height:1.1;display:flex;flex-direction:column;align-items:center;justify-content:center}
-#wBar .btn small{font-size:10px;font-weight:800;opacity:.9}
-#wBar .btn.on{outline:3px solid #fde047;background:rgba(250,204,21,.35)}
-#wBar .btn.dis{opacity:.45}
-</style>
-<div id="wld">
-  <canvas id="wc"></canvas>
-  <div id="wTop" class="dg">
-    <button class="btn" id="wBack" aria-label="خروج">✕</button>
-    <span>💰 <b id="wG">0</b></span>
-    <span>🪖 <b id="wA">0</b></span>
-    <span class="sp"></span>
-    <span id="wShW">🛡 <b id="wSh">—</b></span>
-    <span>👥 <b id="wP">0</b></span>
-  </div>
-  <div id="wNote"></div>
-  <div id="wFeed"></div>
-  <div id="wRank" class="dg"></div>
-  <div id="wTgt" class="dg"><div class="tx" id="wTx"></div><button class="btn" id="wGo">⚔️ حمله</button><button class="btn" id="wNo">✕</button></div>
-  <div id="wBar">
-    <button class="btn" data-b="house">🏠<small></small></button>
-    <button class="btn" data-b="barracks">⚔️<small></small></button>
-    <button class="btn" data-b="tower">🗼<small></small></button>
-    <button class="btn" id="wTrain">🪖<small></small></button>
-    <button class="btn" id="wRecall">📣<small>بازگشت</small></button>
-    <button class="btn" id="wMe">📍<small>پایگاه</small></button>
-    <button class="btn" id="wRk">🏆<small>رتبه</small></button>
-  </div>
-</div>
-<script>
-(function(){
- 'use strict';
- var $=function(i){return document.getElementById(i)};
- var tg=window.Telegram&&window.Telegram.WebApp,initData=(tg&&tg.initData)||'';
- var T=32,COL=['#ef4444','#3b82f6','#22c55e','#f59e0b','#a855f7','#14b8a6','#ec4899','#84cc16','#f97316','#06b6d4'];
- var KN=['castle','house','barracks','tower'],EM=['🏰','🏠','⚔️','🗼'];
- var ERR={gold:'طلا کافی نیست 💰',tile:'اینجا نمی‌شه ساخت (فقط داخل محدوده‌ی خودت، روی خونه‌ی خالی)',max:'به سقف این ساختمون رسیدی',cap:'ظرفیت لشکر پره',nobarracks:'اول یه پادگان بساز ⚔️',shielded:'این پایگاه محافظت‌شده‌ست 🛡',noarmy:'سربازی در پایگاه نداری',rate:'یواش‌تر!',nojoin:'دوباره وارد می‌شم…',full:'سرور پره؛ بعداً سر بزن',self:'به خودت نمی‌تونی حمله کنی',target:'این پایگاه دیگه وجود نداره',busy:'سرور شلوغه',disabled:'سرور عمومی فعلاً غیرفعاله',auth:'ورود ناموفق بود',net:'اتصال برقرار نشد',error:'خطا'};
- var ov=$('wld'),cv=$('wc'),ctx=cv.getContext('2d');
- var token=null,es=null,isOpen=false,raf=0,W=null,sel=null,target=null,joining=false,centered=false;
- var PL={},B={},U={},mi=null,shots=[],dpr=1,vw=0,vh=0,cam={x:0,y:0,s:1},lastT=0,noteT=0;
 
- function note(t){var n=$('wNote');if(!t){n.classList.remove('on');return}n.textContent=t;n.classList.add('on');clearTimeout(noteT);noteT=setTimeout(function(){n.classList.remove('on')},2600)}
- function feed(t){var f=$('wFeed'),d=document.createElement('div');d.textContent=t;f.appendChild(d);while(f.children.length>4)f.removeChild(f.firstChild);setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d)},9000)}
- function col(pi){return COL[pi%COL.length]}
- function resize(){dpr=Math.min(2,window.devicePixelRatio||1);vw=window.innerWidth;vh=window.innerHeight;cv.width=Math.round(vw*dpr);cv.height=Math.round(vh*dpr)}
- function minS(){return W?Math.min(vw,vh)/(W.size*T)*0.95:0.2}
- function clampCam(){
-  if(!W)return;var ts=T*cam.s,ws=W.size*ts;
-  cam.x=ws<vw?(vw-ws)/2:Math.min(ts/2,Math.max(vw-ws+ts/2,cam.x));
-  cam.y=ws<vh?(vh-ws)/2:Math.min(ts/2,Math.max(vh-ws+ts/2,cam.y));
- }
- function center(wx,wy){cam.x=vw/2-wx*T*cam.s;cam.y=vh/2-wy*T*cam.s;clampCam()}
- function zoomAt(f,sx,sy){
-  var ns=Math.max(minS(),Math.min(3.2,cam.s*f));f=ns/cam.s;
-  cam.x=sx-(sx-cam.x)*f;cam.y=sy-(sy-cam.y)*f;cam.s=ns;clampCam();
- }
-
- /* ---------- ارتباط ---------- */
- function post(path,body){
-  return fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){
-   return r.json().catch(function(){return {}}).then(function(d){if(!r.ok){var e=new Error(d.error||'error');e.code=d.error||'error';throw e}return d});
-  });
- }
- function join(){
-  if(joining)return;
-  if(!initData){note('این بخش فقط داخل تلگرام کار می‌کنه');return}
-  joining=true;note('در حال ورود به سرور…');
-  post('/api/world/join',{initData:initData}).then(function(d){joining=false;token=d.token;connect()}).catch(function(e){
-   joining=false;note(ERR[e.code]||ERR.net);
-   if(isOpen&&e.code!=='full'&&e.code!=='disabled'&&e.code!=='auth')setTimeout(join,3000);
-  });
- }
- function connect(){
-  if(es){es.close();es=null}
-  es=new EventSource('/api/world/stream?t='+token);
-  es.onmessage=function(e){try{handle(JSON.parse(e.data))}catch(x){}};
-  es.onerror=function(){
-   if(es){es.close();es=null}
-   if(isOpen){note('اتصال قطع شد؛ دوباره وصل می‌شم…');setTimeout(function(){if(isOpen&&!es)join()},2000)}
-  };
- }
- function cmd(o){
-  o.token=token;
-  return post('/api/world/cmd',o).catch(function(e){
-   if(e.code==='auth'){join()}else note(ERR[e.code]||ERR.error);
-   throw e;
-  });
- }
-
- /* ---------- پیام‌های سرور ---------- */
- function pl(p){p.sh=Date.now()+(p.shl||0);return p}
- function bo(a){return {id:a[0],pi:a[1],k:a[2],x:a[3],y:a[4],hp:a[5]}}
- function upUnits(list){
-  var seen={};
-  for(var i=0;i<list.length;i++){
-   var a=list[i],x=a[2]/10,y=a[3]/10,u=U[a[0]];
-   if(!u)U[a[0]]={id:a[0],pi:a[1],x:x,y:y,tx:x,ty:y,hp:a[4],m:a[5]};
-   else{u.tx=x;u.ty=y;u.hp=a[4];u.m=a[5]}
-   seen[a[0]]=1;
-  }
-  for(var id in U)if(!seen[id])delete U[id];
- }
- function ev(e){
-  var k=e[0],v=e[1];
-  if(k==='b')B[v[0]]=bo(v);
-  else if(k==='bd')delete B[v];
-  else if(k==='p'){
-   var old=PL[v.pi];PL[v.pi]=pl(v);
-   if(W&&v.pi===W.me.pi&&old&&(old.cx!==v.cx||old.cy!==v.cy)){W.me.cx=v.cx;W.me.cy=v.cy;center(v.cx,v.cy);note('💥 پایگاهت نابود شد! یه پایگاه جدید با سپر موقت گرفتی');sel=null;target=null}
-  }
-  else if(k==='pd'){delete PL[v];if(target===v){target=null}}
-  else if(k==='f')feed(v);
- }
- function handle(m){
-  if(m.t==='full'){
-   W=m;PL={};B={};U={};shots=[];
-   m.players.forEach(function(p){PL[p.pi]=pl(p)});
-   m.b.forEach(function(b){B[b[0]]=bo(b)});
-   upUnits(m.u);mi=m.mi;
-   if(!centered){cam.s=Math.max(minS(),1.1);center(m.me.cx,m.me.cy);centered=true}
-   note('');
-  }else if(m.t==='tick'&&W){
-   upUnits(m.u);mi=m.mi;
-   if(m.h)m.h.forEach(function(h){var b=B[h[0]];if(b)b.hp=h[1]});
-   if(m.s){var n=performance.now();m.s.forEach(function(s){shots.push({a:s,t:n})})}
-   if(m.e)m.e.forEach(ev);
-  }
-  ui();
- }
-
- /* ---------- رابط ---------- */
- function fmt(ms){var s=Math.ceil(ms/1000),m=Math.floor(s/60);return m+':'+(s%60<10?'0':'')+(s%60)}
- function ui(){
-  if(!W||!mi)return;
-  $('wG').textContent=mi.g+'/'+mi.gc;
-  $('wA').textContent=mi.n+'/'+mi.nc+(mi.q?' +'+mi.q:'');
-  $('wP').textContent=Object.keys(PL).length;
-  $('wShW').style.display=mi.sh>0?'flex':'none';$('wSh').textContent=fmt(mi.sh);
-  var mine={},k;for(var id in B){var b=B[id];if(b.pi===W.me.pi)mine[b.k]=(mine[b.k]||0)+1}
-  document.querySelectorAll('#wBar [data-b]').forEach(function(btn){
-   k=btn.getAttribute('data-b');var def=W.kinds[k],idx=KN.indexOf(k);
-   btn.querySelector('small').textContent=def.cost+'  '+(mine[idx]||0)+'/'+def.max;
-   btn.classList.toggle('on',sel===k);btn.classList.toggle('dis',mi.g<def.cost||(mine[idx]||0)>=def.max);
-  });
-  $('wTrain').querySelector('small').textContent=(W.soldier.cost*5)+' (+5)';
-  var tp=target!==null&&PL[target];
-  if(tp){
-   var home=mi.n-mi.a,sh=tp.sh>Date.now();
-   $('wTx').innerHTML='🎯 <b>'+esc(tp.name)+'</b><br><small>⚔️ '+tp.kills+' · 💀 '+tp.lost+(sh?' · 🛡 محافظت‌شده':'')+' · سرباز آماده: '+home+'</small>';
-   $('wGo').disabled=sh||home<1;$('wTgt').classList.add('on');
-  }else $('wTgt').classList.remove('on');
- }
- function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
- function rank(){
-  var r=$('wRank');if(r.classList.contains('on')){r.classList.remove('on');return}
-  var a=Object.keys(PL).map(function(k){return PL[k]}).sort(function(x,y){return y.kills-x.kills||x.lost-y.lost});
-  r.innerHTML=a.map(function(p,i){return '<div'+(W&&p.pi===W.me.pi?' class="me"':'')+'><span>'+(i+1)+'. '+esc(p.name)+'</span><span>⚔️ '+p.kills+'  💀 '+p.lost+'</span></div>'}).join('')||'—';
-  r.classList.add('on');
- }
-
- /* ---------- رسم ---------- */
- function draw(ts){
-  raf=requestAnimationFrame(draw);
-  if(!W)return;
-  var dt=Math.min(0.1,(ts-lastT)/1000||0.016);lastT=ts;
-  var kf=Math.min(1,dt*9);
-  for(var id in U){var u=U[id];u.x+=(u.tx-u.x)*kf;u.y+=(u.ty-u.y)*kf}
-  var s=T*cam.s,ox=cam.x,oy=cam.y;
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle='#0b1a12';ctx.fillRect(0,0,vw,vh);
-  var X=function(wx){return wx*s+ox},Y=function(wy){return wy*s+oy};
-  ctx.fillStyle='#2f6b36';ctx.fillRect(X(-.5),Y(-.5),W.size*s,W.size*s);
-  if(s>=20){
-   ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();
-   var x0=Math.max(0,Math.floor((-ox)/s)),x1=Math.min(W.size,Math.ceil((vw-ox)/s)),y0=Math.max(0,Math.floor((-oy)/s)),y1=Math.min(W.size,Math.ceil((vh-oy)/s));
-   for(var gx=x0;gx<=x1;gx++){ctx.moveTo(X(gx-.5),Y(-.5));ctx.lineTo(X(gx-.5),Y(W.size-.5))}
-   for(var gy=y0;gy<=y1;gy++){ctx.moveTo(X(-.5),Y(gy-.5));ctx.lineTo(X(W.size-.5),Y(gy-.5))}
-   ctx.stroke();
-  }
-  var now=Date.now(),P=W.plot,mePi=W.me.pi;
-  for(var pk in PL){
-   var p=PL[pk],c=col(p.pi),px=X(p.cx-P-.5),py=Y(p.cy-P-.5),pw=(2*P+1)*s;
-   if(px>vw||py>vh||px+pw<0||py+pw<0)continue;
-   ctx.fillStyle=c+'22';ctx.fillRect(px,py,pw,pw);
-   ctx.strokeStyle=p.pi===mePi?'#fde047':c;ctx.lineWidth=p.pi===mePi?3:2;
-   ctx.setLineDash(p.sh>now?[8,6]:[]);ctx.strokeRect(px,py,pw,pw);ctx.setLineDash([]);
-  }
-  var occ={};for(var bi in B){occ[B[bi].x*4096+B[bi].y]=1}
-  if(sel){
-   ctx.fillStyle='rgba(255,255,255,.22)';var me=W.me;
-   for(var dx=-P;dx<=P;dx++)for(var dy=-P;dy<=P;dy++){
-    if(occ[(me.cx+dx)*4096+me.cy+dy])continue;
-    ctx.fillRect(X(me.cx+dx-.5)+1,Y(me.cy+dy-.5)+1,s-2,s-2);
-   }
-  }
-  ctx.textAlign='center';ctx.textBaseline='middle';
-  for(var b2 in B){
-   var b=B[b2],cx=X(b.x),cy=Y(b.y);
-   if(cx<-s||cy<-s||cx>vw+s||cy>vh+s)continue;
-   ctx.fillStyle=col(b.pi)+'99';ctx.beginPath();ctx.arc(cx,cy,s*.46,0,6.283);ctx.fill();
-   ctx.font=Math.round(s*(b.k===0?1.05:.8))+'px sans-serif';ctx.fillStyle='#fff';ctx.fillText(EM[b.k],cx,cy+s*.04);
-   var mx=W.kinds[KN[b.k]].hp;
-   if(b.hp<mx){var bw=s*.8;ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(cx-bw/2,cy-s*.62,bw,4);ctx.fillStyle=b.hp/mx>.5?'#4ade80':b.hp/mx>.25?'#facc15':'#ef4444';ctx.fillRect(cx-bw/2,cy-s*.62,bw*Math.max(0,b.hp/mx),4)}
-  }
-  ctx.font='bold '+Math.max(10,Math.min(15,s*.45))+'px sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.7)';
-  for(var q in PL){
-   var pp=PL[q],lx=X(pp.cx),ly=Y(pp.cy-P-.9);
-   if(lx<-80||ly<-20||lx>vw+80||ly>vh+20)continue;
-   var tx=(pp.sh>now?'🛡 ':'')+pp.name;ctx.strokeText(tx,lx,ly);ctx.fillStyle=pp.pi===mePi?'#fde047':'#fff';ctx.fillText(tx,lx,ly);
-  }
-  var r=Math.max(2.5,s*.2);
-  for(var u2 in U){
-   var uu=U[u2],ux=X(uu.x),uy=Y(uu.y);
-   if(ux<-10||uy<-10||ux>vw+10||uy>vh+10)continue;
-   ctx.fillStyle=col(uu.pi);ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=1.2;
-   ctx.beginPath();ctx.arc(ux,uy,r,0,6.283);ctx.fill();ctx.stroke();
-   if(uu.m===1){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ux,uy,r*.35,0,6.283);ctx.fill()}
-   if(uu.hp<W.soldier.hp){ctx.fillStyle='#ef4444';ctx.fillRect(ux-r,uy-r-4,r*2*Math.max(0,uu.hp/W.soldier.hp),2)}
-  }
-  var pn=performance.now();
-  shots=shots.filter(function(h){return pn-h.t<260});
-  ctx.lineWidth=2;
-  shots.forEach(function(h){ctx.strokeStyle='rgba(253,224,71,'+(1-(pn-h.t)/260)+')';ctx.beginPath();ctx.moveTo(X(h.a[0]),Y(h.a[1]));ctx.lineTo(X(h.a[2]),Y(h.a[3]));ctx.stroke()});
-  var tp=target!==null&&PL[target];
-  if(tp){ctx.strokeStyle='#f87171';ctx.lineWidth=3;ctx.setLineDash([6,5]);ctx.beginPath();ctx.arc(X(tp.cx),Y(tp.cy),s*(P+1.2),0,6.283);ctx.stroke();ctx.setLineDash([])}
- }
-
- /* ---------- لمس و ماوس ---------- */
- var ptrs={},moved=0,pinch0=0;
- function nPtr(){return Object.keys(ptrs).length}
- cv.addEventListener('pointerdown',function(e){
-  try{cv.setPointerCapture(e.pointerId)}catch(x){}
-  ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
-  if(nPtr()===1)moved=0;
-  if(nPtr()===2){var k=Object.keys(ptrs);pinch0=Math.hypot(ptrs[k[0]].x-ptrs[k[1]].x,ptrs[k[0]].y-ptrs[k[1]].y)}
- });
- cv.addEventListener('pointermove',function(e){
-  var p=ptrs[e.pointerId];if(!p)return;
-  var dx=e.clientX-p.x,dy=e.clientY-p.y;
-  if(nPtr()===1){moved+=Math.abs(dx)+Math.abs(dy);cam.x+=dx;cam.y+=dy;clampCam()}
-  else if(nPtr()===2){
-   p.x=e.clientX;p.y=e.clientY;moved=99;
-   var k=Object.keys(ptrs),a=ptrs[k[0]],b=ptrs[k[1]],d=Math.hypot(a.x-b.x,a.y-b.y);
-   if(pinch0>0&&d>0)zoomAt(d/pinch0,(a.x+b.x)/2,(a.y+b.y)/2);
-   pinch0=d;return;
-  }
-  p.x=e.clientX;p.y=e.clientY;
- });
- function up(e){
-  var had=ptrs[e.pointerId];delete ptrs[e.pointerId];pinch0=0;
-  if(had&&e.type==='pointerup'&&nPtr()===0&&moved<10)tap(e.clientX,e.clientY);
- }
- cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
- cv.addEventListener('wheel',function(e){e.preventDefault();zoomAt(e.deltaY<0?1.15:1/1.15,e.clientX,e.clientY)},{passive:false});
- function tap(sx,sy){
-  if(!W)return;
-  var s=T*cam.s,wx=(sx-cam.x)/s,wy=(sy-cam.y)/s;
-  $('wRank').classList.remove('on');
-  if(sel){cmd({type:'build',kind:sel,x:Math.round(wx),y:Math.round(wy)}).catch(function(){});return}
-  var best=null,bd=(W.plot+1)*(W.plot+1);
-  for(var k in PL){var p=PL[k];if(p.pi===W.me.pi)continue;var d=(p.cx-wx)*(p.cx-wx)+(p.cy-wy)*(p.cy-wy);if(d<bd){bd=d;best=p.pi}}
-  target=best;ui();
- }
-
- /* ---------- دکمه‌ها ---------- */
- document.querySelectorAll('#wBar [data-b]').forEach(function(btn){
-  btn.onclick=function(){var k=btn.getAttribute('data-b');sel=sel===k?null:k;if(sel){target=null;note('روی یه خونه‌ی خالیِ داخل محدوده‌ی خودت بزن 👆')}ui()};
- });
- $('wTrain').onclick=function(){cmd({type:'train',n:5}).then(function(){note('۵ سرباز در صف آموزش 🪖')}).catch(function(){})};
- $('wRecall').onclick=function(){cmd({type:'recall'}).then(function(){note('سربازها برمی‌گردن 📣')}).catch(function(){})};
- $('wMe').onclick=function(){if(W)center(W.me.cx,W.me.cy)};
- $('wRk').onclick=rank;
- $('wNo').onclick=function(){target=null;ui()};
- $('wGo').onclick=function(){
-  var tp=target!==null&&PL[target];if(!tp)return;
-  cmd({type:'attack',pi:tp.pi}).then(function(){note('⚔️ لشکر به سمت '+tp.name+' حرکت کرد!');target=null;ui()}).catch(function(){});
- };
- function openW(){
-  isOpen=true;ov.classList.add('on');resize();if(!raf)raf=requestAnimationFrame(draw);
-  if(token&&es)return;join();
- }
- function closeW(){
-  isOpen=false;ov.classList.remove('on');sel=null;target=null;
-  if(es){es.close();es=null}
-  if(raf){cancelAnimationFrame(raf);raf=0}
- }
- $('wldBtn').onclick=openW;
- $('wBack').onclick=closeW;
- window.addEventListener('resize',function(){if(isOpen){resize();clampCam()}});
- setInterval(function(){
-  if(!isOpen||!W||!token||!es)return;
-  var s=T*cam.s;
-  post('/api/world/view',{token:token,x:(-cam.x)/s,y:(-cam.y)/s,w:vw/s,h:vh/s}).catch(function(){});
- },1000);
-})();
-</script>
 </body>
 </html>
