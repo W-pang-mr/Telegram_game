@@ -20,6 +20,10 @@
     CONVERT_DAILY_COINS         سقف تبدیل روزانه‌ی هر کاربر، به سکه (پیش‌فرض 20000؛ 0 = تبدیل خاموش)
     CONVERT_GLOBAL_TON          سقف تبدیل روزانه‌ی کل کاربران، به TON (پیش‌فرض 1)
     DEFAULT_MODE       on | soon | off
+    WORLD              off = غیرفعال کردن «سرور عمومی»                 [پیش‌فرض روشن]
+    WORLD_SIZE         اندازه‌ی نقشه (پیش‌فرض 100)
+    WORLD_MAX_PLAYERS  حداکثر پایگاه همزمان (پیش‌فرض 40)
+    WORLD_SHIELD_NEW   ثانیه‌های سپر بازیکن جدید (پیش‌فرض 300)
     PUBLIC_URL         آدرس عمومی سایت (اختیاری؛ برای manifest)
 */
 const http = require('http');
@@ -27,6 +31,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { createWallet, parseNano } = require('./wallet');
+const { createWorld } = require('./world');
 
 const PORT = process.env.PORT || 3000;
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
@@ -173,6 +178,23 @@ if (walletAllowed && DEPOSIT_ADDRESS) {
   console.warn('wallet disabled: set DATA_DIR (persistent disk) — or ALLOW_EPHEMERAL=1 for tests only');
 }
 
+/* ---------- دنیای عمومی (سرور عمومی همیشه‌روشن) ---------- */
+const world = process.env.WORLD === 'off' ? null : createWorld({
+  dir: DATA_DIR,
+  size: Number(process.env.WORLD_SIZE) || 100,
+  maxPlayers: Number(process.env.WORLD_MAX_PLAYERS) || 40,
+  shieldNew: process.env.WORLD_SHIELD_NEW !== undefined ? Number(process.env.WORLD_SHIELD_NEW) : 300
+});
+if (world) {
+  world.start();
+  if (!process.env.DATA_DIR) console.warn('world: DATA_DIR not set → پایگاه‌ها با هر دیپلوی پاک می‌شن');
+  const bye = () => { try { world.stop(); } catch (e) {} process.exit(0); };
+  process.on('SIGTERM', bye); process.on('SIGINT', bye);
+}
+const wtok = new Map();                                   // توکن نشست → { uid, exp }
+const wauth = t => { const r = typeof t === 'string' && wtok.get(t); if (!r) return null; if (r.exp < Date.now()) { wtok.delete(t); return null; } return r.uid; };
+setInterval(() => { const n = Date.now(); for (const [k, v] of wtok) if (v.exp < n) wtok.delete(k); }, 600000).unref();
+
 /* ---------- HTTP ---------- */
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
@@ -196,6 +218,39 @@ http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/tonconnect-manifest.json') {
       const o = origin(req);
       return json(res, 200, { url: o, name: 'Empire Battle', iconUrl: o + '/icon-180.png' });
+    }
+
+    if (url.pathname.startsWith('/api/world/')) {
+      if (!world) return json(res, 404, { error: 'disabled' });
+      if (req.method === 'GET' && url.pathname === '/api/world/stream') {
+        const uid = wauth(url.searchParams.get('t'));
+        if (!uid) return json(res, 401, { error: 'auth' });
+        req.socket.setTimeout(0); req.socket.setNoDelay(true);
+        try { return world.attach(uid, res, req); } catch (e) { return json(res, 400, { error: e.code || 'error' }); }
+      }
+      if (req.method === 'POST') {
+        const body = await readBody(req);
+        if (url.pathname === '/api/world/join') {
+          const u = verifyInitData(body.initData);
+          if (!u) return json(res, 403, { error: 'auth' });
+          if (wtok.size > 5000) return json(res, 503, { error: 'busy' });
+          try { world.join(u); } catch (e) { return json(res, 400, { error: e.code || 'error' }); }
+          const token = crypto.randomBytes(18).toString('hex');
+          wtok.set(token, { uid: String(u.id), exp: Date.now() + 12 * 3600 * 1000 });
+          return json(res, 200, { token });
+        }
+        const uid = wauth(body.token);
+        if (!uid) return json(res, 401, { error: 'auth' });
+        if (url.pathname === '/api/world/cmd') {
+          try { return json(res, 200, world.cmd(uid, body)); }
+          catch (e) { return json(res, 400, { error: e.code || 'error' }); }
+        }
+        if (url.pathname === '/api/world/view') {
+          try { world.setView(uid, body); return json(res, 200, { ok: true }); }
+          catch (e) { return json(res, 400, { error: e.code || 'error' }); }
+        }
+      }
+      return json(res, 404, { error: 'not found' });
     }
 
     if (req.method === 'POST' && url.pathname === '/api/me') {
