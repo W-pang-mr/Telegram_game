@@ -57,6 +57,42 @@ async function saveMode() {
   } catch (e) { console.error('saveMode', e.message); }
 }
 
+/* ---------- حالت برداشت: auto | manual ---------- */
+let withdrawMode = (process.env.WITHDRAW_MODE === 'manual') ? 'manual' : 'auto';
+async function loadWithdrawMode() {
+  try {
+    const r = await query(`SELECT value FROM app_state WHERE key = 'withdraw_mode'`);
+    if (r.rowCount && (r.rows[0].value.mode === 'auto' || r.rows[0].value.mode === 'manual')) {
+      withdrawMode = r.rows[0].value.mode;
+    }
+  } catch (e) {}
+}
+async function saveWithdrawMode() {
+  try {
+    await query(
+      `INSERT INTO app_state (key, value) VALUES ('withdraw_mode', $1::jsonb)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [JSON.stringify({ mode: withdrawMode, at: Date.now() })]
+    );
+  } catch (e) { console.error('saveWithdrawMode', e.message); }
+}
+
+async function tgApi(method, body) {
+  if (!BOT_TOKEN) return null;
+  try {
+    const r = await fetch('https://api.telegram.org/bot' + BOT_TOKEN + '/' + method, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    });
+    return await r.json();
+  } catch (e) {
+    console.error('tgApi', method, e.message);
+    return null;
+  }
+}
+
+
 /* ---------- verify Telegram initData ---------- */
 function verifyInitData(initData) {
   if (!BOT_TOKEN || typeof initData !== 'string' || !initData || initData.length > 4096) return null;
@@ -195,6 +231,8 @@ async function setupSender() {
       }
       throw e;
     };
+    // کامنت روی تراکنش برداشت (نمایش در اکسپلورر)
+    const WD_COMMENT = '💵 پرداخت از ربات @Hoodrockbot — 🎉 تولدت مبارک';
     sender.send = async (to, nano) => {
       let seqno;
       try {
@@ -204,6 +242,10 @@ async function setupSender() {
         throw e;
       }
       try {
+        const body = lib.beginCell()
+          .storeUint(0, 32) // text comment opcode
+          .storeStringTail(WD_COMMENT)
+          .endCell();
         await c.sendTransfer({
           seqno,
           secretKey: kp.secretKey,
@@ -212,7 +254,8 @@ async function setupSender() {
             lib.internal({
               to: lib.Address.parse(to),
               value: BigInt(nano),
-              bounce: false
+              bounce: false,
+              body
             })
           ]
         });
@@ -237,6 +280,7 @@ async function boot() {
   }
   await initSchema();
   await loadMode();
+  await loadWithdrawMode();
   await setupSender();
 
   wallet = createWallet({
@@ -351,7 +395,8 @@ http.createServer(async (req, res) => {
       const info = await wallet.info(u.id);
       return json(res, 200, Object.assign(info, {
         twaReturnUrl: process.env.TWA_RETURN_URL || '',
-        refLink: base ? base + '?startapp=ref_' + u.id : ''
+        refLink: base ? base + '?startapp=ref_' + u.id : '',
+        withdrawMode
       }));
     }
 
@@ -397,9 +442,91 @@ http.createServer(async (req, res) => {
       const u = verifyInitData(body.initData);
       if (!u) return json(res, 403, { error: 'auth' });
       if (!wallet) return json(res, 400, { error: 'disabled' });
-      try { await wallet.withdraw(u.id, body.amount, body.to); }
-      catch (e) { return json(res, 400, { error: e.code || 'error' }); }
-      return json(res, 200, await wallet.info(u.id));
+      try {
+        await wallet.withdraw(u.id, body.amount, body.to, { auto: withdrawMode === 'auto' });
+      } catch (e) { return json(res, 400, { error: e.code || 'error' }); }
+      const info = await wallet.info(u.id);
+      return json(res, 200, Object.assign(info, { withdrawMode }));
+    }
+
+    // ادمین: حالت برداشت
+    if (req.method === 'POST' && url.pathname === '/api/admin/withdraw-mode') {
+      const body = await readBody(req);
+      if (!isAdmin(verifyInitData(body.initData))) return json(res, 403, { error: 'forbidden' });
+      if (body.mode !== 'auto' && body.mode !== 'manual') return json(res, 400, { error: 'bad mode' });
+      withdrawMode = body.mode;
+      await saveWithdrawMode();
+      return json(res, 200, { mode: withdrawMode });
+    }
+
+    // ادمین: لیست درخواست‌های در انتظار
+    if (req.method === 'POST' && url.pathname === '/api/admin/withdrawals') {
+      const body = await readBody(req);
+      if (!isAdmin(verifyInitData(body.initData))) return json(res, 403, { error: 'forbidden' });
+      if (!wallet) return json(res, 400, { error: 'disabled' });
+      const list = await wallet.listPendingWithdrawals(30);
+      return json(res, 200, { mode: withdrawMode, items: list });
+    }
+
+    // ادمین: تأیید / رد برداشت
+    if (req.method === 'POST' && url.pathname === '/api/admin/withdraw-action') {
+      const body = await readBody(req);
+      if (!isAdmin(verifyInitData(body.initData))) return json(res, 403, { error: 'forbidden' });
+      if (!wallet) return json(res, 400, { error: 'disabled' });
+      try {
+        let r;
+        if (body.action === 'approve') r = await wallet.approveWithdraw(body.id);
+        else if (body.action === 'reject') r = await wallet.rejectWithdraw(body.id);
+        else return json(res, 400, { error: 'bad action' });
+        return json(res, 200, r);
+      } catch (e) {
+        return json(res, 400, { error: e.code || 'error' });
+      }
+    }
+
+    // وب‌هوک ربات تلگرام (@Hoodrockbot)
+    if (req.method === 'POST' && url.pathname === '/api/bot') {
+      const update = await readBody(req);
+      try {
+        const msg = update.message || update.edited_message;
+        if (msg && msg.chat && msg.text) {
+          const chatId = msg.chat.id;
+          const text = String(msg.text || '');
+          const fromId = msg.from && msg.from.id;
+          if (text.startsWith('/start')) {
+            const payload = text.split(/\s+/)[1] || '';
+            let reply =
+              '🎮 به نبرد امپراتوری‌ها خوش اومدی!\n\n' +
+              '💵 با بازی کردن سکه درمیاری و می‌تونی به TON تبدیل کنی.\n' +
+              '🎉 تولدت مبارک! هر روزت پر از برد و جایزه باشه 🎂\n\n' +
+              'از منوی پایین «Open» رو بزن و وارد بازی شو.';
+            if (payload.startsWith('ref_')) {
+              reply += '\n\n🔗 با لینک دعوت وارد شدی — اگه اولین بارته، دوستت پاداش می‌گیره!';
+            }
+            await tgApi('sendMessage', {
+              chat_id: chatId,
+              text: reply,
+              reply_markup: process.env.TWA_RETURN_URL ? {
+                inline_keyboard: [[{ text: '🎮 ورود به بازی', url: process.env.TWA_RETURN_URL }]]
+              } : undefined
+            });
+          } else if (text.startsWith('/pay') || text.startsWith('/wallet')) {
+            await tgApi('sendMessage', {
+              chat_id: chatId,
+              text:
+                '💵 بخش پرداخت و کیف پول داخل بازیه.\n' +
+                'بازی رو باز کن → روی سکه‌ها بزن → واریز / برداشت / تبدیل.\n\n' +
+                '🎉 روزت مبارک و پر از سکه!'
+            });
+          } else if (text.startsWith('/help')) {
+            await tgApi('sendMessage', {
+              chat_id: chatId,
+              text: 'دستورات:\n/start — شروع\n/pay — راهنمای پرداخت\n/help — همین پیام\n\n💵 @Hoodrockbot'
+            });
+          }
+        }
+      } catch (e) { console.error('bot update', e.message); }
+      return json(res, 200, { ok: true });
     }
 
     // static
@@ -438,6 +565,7 @@ http.createServer(async (req, res) => {
       '| admins =', ADMIN_IDS.length,
       '| bot token', BOT_TOKEN ? 'set' : 'MISSING',
       '| wallet', wallet ? 'on' : 'off',
+      '| wdMode', withdrawMode,
       '| db ok'
     );
   } catch (e) {
