@@ -223,18 +223,23 @@ function createWallet(o) {
     }
   }
 
-  // mark old pending/sending as review on boot
+  // mark interrupted 'sending' as review on boot (pending stays for manual mode)
   (async () => {
     try {
       await query(
         `UPDATE withdrawals SET status = 'review', updated_at = NOW()
-         WHERE status IN ('pending','sending')`
+         WHERE status = 'sending'`
       );
     } catch (e) {}
   })();
 
-  async function withdraw(uid, amountStr, to) {
-    if (!sender.ready) throw err('disabled');
+  async function withdraw(uid, amountStr, to, opts) {
+    opts = opts || {};
+    // در حالت دستی هم باید sender آماده باشه تا بعداً بتونیم بفرستیم؛ ولی اگه فقط ثبت درخواسته، می‌تونیم اجازه بدیم
+    if (!sender.ready && opts.auto !== false) throw err('disabled');
+    if (!sender.ready && opts.auto === false) {
+      // manual mode without sender: still accept request, admin can't auto-send until mnemonic set
+    }
     const amount = parseNano(amountStr);
     if (amount === null) throw err('amount');
     if (amount < min) throw err('min');
@@ -274,8 +279,83 @@ function createWallet(o) {
         throw e;
       }
     });
-    pump();
+    if (opts.auto !== false) pump();
     return true;
+  }
+
+  async function listPendingWithdrawals(limit) {
+    limit = Math.min(50, Math.max(1, limit || 20));
+    const r = await query(
+      `SELECT id, telegram_id, dest, amount, fee, net, status,
+              EXTRACT(EPOCH FROM created_at)*1000 AS t
+       FROM withdrawals WHERE status = 'pending'
+       ORDER BY id ASC LIMIT $1`,
+      [limit]
+    );
+    return r.rows.map(x => ({
+      id: Number(x.id),
+      uid: String(x.telegram_id),
+      to: x.dest,
+      amount: Number(x.amount),
+      fee: Number(x.fee),
+      net: Number(x.net),
+      status: x.status,
+      t: Number(x.t)
+    }));
+  }
+
+  async function approveWithdraw(id) {
+    id = Number(id);
+    if (!Number.isFinite(id)) throw err('amount');
+    if (!sender.ready) throw err('disabled');
+    const r = await query(`SELECT * FROM withdrawals WHERE id = $1`, [id]);
+    if (!r.rowCount) throw err('notfound');
+    const row = r.rows[0];
+    if (row.status !== 'pending') throw err('pending');
+    await query(`UPDATE withdrawals SET status = 'sending', updated_at = NOW() WHERE id = $1`, [id]);
+    try {
+      await sender.send(row.dest, Number(row.net));
+      await query(`UPDATE withdrawals SET status = 'sent', updated_at = NOW() WHERE id = $1`, [id]);
+      return { id, status: 'sent' };
+    } catch (e) {
+      if (e && e.safe) {
+        await query(`UPDATE users SET ton_balance = ton_balance + $2, updated_at = NOW() WHERE telegram_id = $1`, [row.telegram_id, row.amount]);
+        await query(`UPDATE withdrawals SET status = 'failed', updated_at = NOW() WHERE id = $1`, [id]);
+        throw err('failed');
+      }
+      await query(`UPDATE withdrawals SET status = 'review', updated_at = NOW() WHERE id = $1`, [id]);
+      throw err('review');
+    }
+  }
+
+  async function rejectWithdraw(id) {
+    id = Number(id);
+    if (!Number.isFinite(id)) throw err('amount');
+    await withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const r = await client.query(
+          `SELECT * FROM withdrawals WHERE id = $1 FOR UPDATE`,
+          [id]
+        );
+        if (!r.rowCount) throw err('notfound');
+        const w = r.rows[0];
+        if (w.status !== 'pending' && w.status !== 'review') throw err('pending');
+        await client.query(
+          `UPDATE users SET ton_balance = ton_balance + $2, updated_at = NOW() WHERE telegram_id = $1`,
+          [w.telegram_id, w.amount]
+        );
+        await client.query(
+          `UPDATE withdrawals SET status = 'rejected', updated_at = NOW() WHERE id = $1`,
+          [id]
+        );
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      }
+    });
+    return { id, status: 'rejected' };
   }
 
   /* ---- رفرال + گردونه ---- */
@@ -504,7 +584,11 @@ function createWallet(o) {
     saveGame,
     adminGiveCoins,
     adminSetCoins,
-    ensureUser
+    ensureUser,
+    listPendingWithdrawals,
+    approveWithdraw,
+    rejectWithdraw,
+    pump
   };
 }
 
